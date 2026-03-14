@@ -1,0 +1,319 @@
+---
+title: 'useMemo'
+description: 'Memoize expensive computations to optimize performance'
+icon: 'brain'
+---
+
+## Overview
+
+`useMemo` memoizes the result of an expensive computation and only recalculates it when dependencies change. This hook helps optimize performance by avoiding unnecessary recalculations on every render.
+
+## Signature
+
+```typescript
+function useMemo<T>(
+  compute: () => T,
+  deps: any[]
+): T
+```
+
+## Parameters
+
+<ParamField path="compute" type="() => T" required>
+  A function that computes and returns the value to memoize. This function should be pure (no side effects).
+
+  ```javascript
+  const expensiveValue = useMemo(() => {
+    return performExpensiveCalculation(data)
+  }, [data])
+  ```
+</ParamField>
+
+<ParamField path="deps" type="any[]" required>
+  Array of dependencies. The memoized value is recalculated only when one of these dependencies changes.
+
+  <Warning>
+    Unlike `useEffect`, the dependencies array is **required** for `useMemo`. Omitting it will throw an error.
+  </Warning>
+</ParamField>
+
+## Returns
+
+<ResponseField name="value" type="T">
+  The memoized value returned by the `compute` function
+</ResponseField>
+
+## Usage
+
+### Basic Memoization
+
+```jsx
+import { useMemo, useStore } from '@ryunixjs/core'
+
+function ProductList({ products }) {
+  const [filter, setFilter] = useStore('')
+
+  // Only recalculate when products or filter changes
+  const filteredProducts = useMemo(() => {
+    console.log('Filtering products...')
+    return products.filter(p => 
+      p.name.toLowerCase().includes(filter.toLowerCase())
+    )
+  }, [products, filter])
+
+  return (
+    <div>
+      <input 
+        value={filter} 
+        onChange={(e) => setFilter(e.target.value)} 
+        placeholder="Filter products..."
+      />
+      {filteredProducts.map(p => (
+        <div key={p.id}>{p.name}</div>
+      ))}
+    </div>
+  )
+}
+```
+
+### Expensive Calculations
+
+```jsx
+import { useMemo } from '@ryunixjs/core'
+
+function DataAnalysis({ data }) {
+  const statistics = useMemo(() => {
+    // Expensive computation
+    const mean = data.reduce((a, b) => a + b, 0) / data.length
+    const variance = data.reduce((sum, val) => 
+      sum + Math.pow(val - mean, 2), 0
+    ) / data.length
+    const stdDev = Math.sqrt(variance)
+    
+    return { mean, variance, stdDev }
+  }, [data])
+
+  return (
+    <div>
+      <p>Mean: {statistics.mean}</p>
+      <p>Std Dev: {statistics.stdDev}</p>
+    </div>
+  )
+}
+```
+
+### Referential Equality
+
+Use `useMemo` to maintain referential equality for objects and arrays:
+
+```jsx
+import { useMemo, useEffect } from '@ryunixjs/core'
+
+function UserProfile({ userId, settings }) {
+  // Without useMemo, this object would be recreated on every render
+  const userConfig = useMemo(() => ({
+    id: userId,
+    theme: settings.theme,
+    locale: settings.locale
+  }), [userId, settings.theme, settings.locale])
+
+  useEffect(() => {
+    // Only runs when userConfig actually changes
+    applyUserConfig(userConfig)
+  }, [userConfig])
+
+  return <div>User {userId}</div>
+}
+```
+
+### Sorting and Filtering
+
+```jsx
+import { useMemo, useStore } from '@ryunixjs/core'
+
+function SortableTable({ data }) {
+  const [sortBy, setSortBy] = useStore('name')
+  const [sortOrder, setSortOrder] = useStore('asc')
+
+  const sortedData = useMemo(() => {
+    const sorted = [...data].sort((a, b) => {
+      if (a[sortBy] < b[sortBy]) return sortOrder === 'asc' ? -1 : 1
+      if (a[sortBy] > b[sortBy]) return sortOrder === 'asc' ? 1 : -1
+      return 0
+    })
+    return sorted
+  }, [data, sortBy, sortOrder])
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th onClick={() => setSortBy('name')}>Name</th>
+          <th onClick={() => setSortBy('age')}>Age</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sortedData.map(item => (
+          <tr key={item.id}>
+            <td>{item.name}</td>
+            <td>{item.age}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+```
+
+## Dependency Comparison
+
+Dependencies are compared using the same algorithm as `useEffect`:
+
+```javascript
+const haveDepsChanged = (oldDeps, newDeps) => {
+  if (!oldDeps || !newDeps) return true
+  if (oldDeps.length !== newDeps.length) return true
+  return oldDeps.some((dep, i) => !Object.is(dep, newDeps[i]))
+}
+```
+
+<Note>
+  Dependencies are compared using `Object.is()`, which uses identity comparison for objects and arrays.
+</Note>
+
+## Error Handling
+
+The compute function is wrapped in error handling:
+
+```javascript
+try {
+  value = compute()
+} catch (error) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('Error in useMemo computation:', error)
+  }
+  throw error
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:215-222`
+
+<Warning>
+  Errors in the compute function are logged in development mode and then re-thrown. Always ensure your compute function handles errors appropriately.
+</Warning>
+
+## Validation
+
+The hook validates its arguments:
+
+```javascript
+if (!is.function(compute)) {
+  throw new Error('useMemo callback must be a function')
+}
+if (!Array.isArray(deps)) {
+  throw new Error('useMemo requires a dependencies array')
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:201-206`
+
+## SSR Behavior
+
+During server-side rendering, the compute function runs on every call:
+
+```javascript
+const state = getState()
+if (state.isServerRendering) {
+  return compute()
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:194-197`
+
+<Note>
+  On the server, memoization is bypassed and the compute function executes immediately. This ensures consistent rendering between server and client.
+</Note>
+
+## Implementation Details
+
+```javascript
+const hook = {
+  hookID: hookIndex,
+  type: RYUNIX_TYPES.RYUNIX_MEMO,
+  value,
+  deps,
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:225-230`
+
+## When to Use useMemo
+
+<CardGroup cols={2}>
+  <Card title="Use useMemo when:" icon="check">
+    - Performing expensive calculations
+    - Computing derived data from large datasets
+    - Maintaining referential equality for objects/arrays
+    - Optimizing child component re-renders
+  </Card>
+  <Card title="Don't use useMemo when:" icon="xmark">
+    - The computation is trivial
+    - Dependencies change frequently
+    - Premature optimization
+    - The value is only used once
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Memoizing Arrays
+
+```jsx
+const options = useMemo(() => [
+  { value: 'a', label: 'Option A' },
+  { value: 'b', label: 'Option B' }
+], [])
+```
+
+### Memoizing Objects
+
+```jsx
+const config = useMemo(() => ({
+  apiUrl: process.env.API_URL,
+  timeout: 5000
+}), [])
+```
+
+### Derived State
+
+```jsx
+const summary = useMemo(() => ({
+  total: items.reduce((sum, item) => sum + item.price, 0),
+  count: items.length,
+  average: items.length > 0 
+    ? items.reduce((sum, item) => sum + item.price, 0) / items.length 
+    : 0
+}), [items])
+```
+
+## Performance Considerations
+
+<Tip>
+  `useMemo` itself has overhead. Only use it when the computation is genuinely expensive or when referential equality matters. Profile your application to verify the optimization is beneficial.
+</Tip>
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useCallback" icon="function" href="./useCallback">
+    Memoize callback functions instead of values
+  </Card>
+  <Card title="useEffect" icon="bolt" href="./useEffect">
+    Run side effects based on dependency changes
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useCallback](/api/hooks/useCallback)
+- See the examples above for performance optimization patterns

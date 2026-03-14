@@ -1,0 +1,209 @@
+---
+title: Packages Overview
+description: Understanding the RyunixJS monorepo structure and package ecosystem
+---
+
+## Monorepo Architecture
+
+RyunixJS is distributed as a collection of focused, interoperable packages within a monorepo. This modular design enables you to use only what you need while maintaining consistency across the framework.
+
+<CardGroup cols={2}>
+  <Card title="@unsetsoft/ryunixjs" icon="cube" href="/packages/ryunixjs">
+    Core library with fiber reconciliation, hooks system, and SSR capabilities
+  </Card>
+  <Card title="@unsetsoft/ryunix-presets" icon="wrench" href="/packages/ryunix-presets">
+    Build tooling with Webpack, Babel, and optimized development presets
+  </Card>
+  <Card title="@unsetsoft/cra" icon="rocket" href="/packages/cra">
+    Project scaffolding CLI for creating new RyunixJS applications
+  </Card>
+  <Card title="@unsetsoft/ryunix-devtools" icon="magnifying-glass" href="/packages/ryunix-devtools">
+    Browser extension for debugging and inspecting Ryunix applications
+  </Card>
+</CardGroup>
+
+## How Packages Work Together
+
+The RyunixJS ecosystem follows a layered architecture:
+
+```mermaid
+graph TD
+    A[@unsetsoft/cra] --> B[@unsetsoft/ryunix-presets]
+    B --> C[@unsetsoft/ryunixjs]
+    D[@unsetsoft/ryunix-devtools] -.-> C
+    E[Your Application] --> C
+    E --> B
+```
+
+### Development Workflow
+
+<Steps>
+  <Step title="Scaffold with CRA">
+    Use `@unsetsoft/cra` to generate a new project with optimized defaults and folder structure.
+  </Step>
+  
+  <Step title="Build with Presets">
+    The `@unsetsoft/ryunix-presets` package manages Webpack configuration, development server, and build pipelines.
+  </Step>
+  
+  <Step title="Runtime with Core">
+    Your application runs on `@unsetsoft/ryunixjs`, the core library handling rendering, hooks, and state management.
+  </Step>
+  
+  <Step title="Debug with DevTools">
+    Install the `@unsetsoft/ryunix-devtools` extension to inspect component trees and hook states in real-time.
+  </Step>
+</Steps>
+
+## Package Responsibilities
+
+### Core Library (@unsetsoft/ryunixjs)
+
+**Responsibilities:**
+- Virtual DOM creation and reconciliation
+- Fiber-based rendering architecture
+- Hooks system (`useStore`, `useEffect`, etc.)
+- Server-Side Rendering (SSR) engine
+- Concurrent rendering and prioritization
+- Error boundaries and suspense
+
+**When to use directly:**
+- Building custom integrations
+- Creating library components
+- Advanced SSR scenarios
+- Understanding framework internals
+
+### Presets Package (@unsetsoft/ryunix-presets)
+
+**Responsibilities:**
+- Webpack configuration management
+- Babel transpilation and JSX transformation
+- Development server with HMR
+- Production build optimization
+- MDX, SASS, and PostCSS support
+- ESLint integration
+
+**When to use directly:**
+- Customizing build configuration
+- Adding custom Webpack loaders/plugins
+- Configuring dev server behavior
+- Setting up advanced tooling
+
+### CRA Package (@unsetsoft/cra)
+
+**Responsibilities:**
+- Interactive project scaffolding
+- Template generation
+- Dependency installation
+- Initial configuration setup
+- VS Code workspace configuration
+
+**When to use:**
+- Starting a new RyunixJS project
+- Creating example applications
+- Setting up development environments
+
+### DevTools Package (@unsetsoft/ryunix-devtools)
+
+**Responsibilities:**
+- Component tree visualization
+- Props and state inspection
+- Hook tracking and debugging
+- Performance profiling
+- Runtime application detection
+
+**When to use:**
+- Debugging component behavior
+- Inspecting state changes
+- Performance optimization
+- Understanding component hierarchy
+
+## Version Compatibility
+
+RyunixJS packages follow semantic versioning with coordinated releases:
+
+| Package | Current Version | Compatibility |
+| :--- | :--- | :--- |
+| @unsetsoft/ryunixjs | 1.2.4-canary.17 | Node.js 20, 22, 24 |
+| @unsetsoft/ryunix-presets | 1.0.26-canary.27 | Requires ryunixjs ^1.2.4 |
+| @unsetsoft/cra | 1.1.20-canary.4 | Node.js 20, 22, 24 |
+| @unsetsoft/ryunix-devtools | 1.3.0 | Chrome/Edge 88+ |
+
+<Note>
+The `canary` tag indicates pre-release versions with cutting-edge features. Use `latest` for stable production deployments.
+</Note>
+
+## Installation Strategies
+
+### Quick Start (Recommended)
+
+```bash
+npx @unsetsoft/cra@latest my-app
+cd my-app
+npm start
+```
+
+This installs both core and presets automatically with optimized configuration.
+
+### Manual Installation
+
+```bash
+npm install @unsetsoft/ryunixjs @unsetsoft/ryunix-presets
+```
+
+### Canary Releases
+
+```bash
+npm install @unsetsoft/ryunixjs@canary @unsetsoft/ryunix-presets@canary
+```
+
+<Warning>
+Canary releases may contain breaking changes and experimental features. Always test thoroughly before using in production.
+</Warning>
+
+## Package Exports
+
+Each package exposes specific entry points for different use cases:
+
+### Core (@unsetsoft/ryunixjs)
+
+```javascript
+// Main exports (UMD/ESM)
+import { render, createElement, useStore } from '@unsetsoft/ryunixjs'
+
+// JSX runtime (automatic with Babel)
+import { jsx } from '@unsetsoft/ryunixjs/jsx-runtime'
+
+// Server-side rendering
+import { renderToString } from '@unsetsoft/ryunixjs'
+```
+
+### Presets (@unsetsoft/ryunix-presets)
+
+```javascript
+// CLI commands via package.json scripts
+"scripts": {
+  "dev": "ryunix dev",
+  "build": "ryunix build"
+}
+
+// Webpack config extension
+const { loadConfig } = require('@unsetsoft/ryunix-presets/webpack')
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core API Reference" icon="book" href="/packages/ryunixjs">
+    Explore hooks, rendering methods, and core utilities
+  </Card>
+  <Card title="Build Configuration" icon="gear" href="/packages/ryunix-presets">
+    Learn how to configure Webpack, ESLint, and dev server
+  </Card>
+  <Card title="Create New App" icon="plus" href="/packages/cra">
+    Get started with the scaffolding CLI
+  </Card>
+  <Card title="Debugging Tools" icon="bug" href="/packages/ryunix-devtools">
+    Install and use the DevTools extension
+  </Card>
+</CardGroup>

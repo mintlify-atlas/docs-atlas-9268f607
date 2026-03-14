@@ -1,0 +1,325 @@
+---
+title: 'useEffect'
+description: 'Perform side effects in functional components with dependency tracking'
+icon: 'bolt'
+---
+
+## Overview
+
+`useEffect` allows you to perform side effects in functional components. It runs after the component renders and can optionally clean up before the component unmounts or before the effect runs again.
+
+Common use cases include:
+- Data fetching
+- Setting up subscriptions
+- Manually changing the DOM
+- Logging and analytics
+- Setting up timers
+
+## Signature
+
+```typescript
+function useEffect(
+  callback: () => (void | (() => void)),
+  deps?: any[]
+): void
+```
+
+## Parameters
+
+<ParamField path="callback" type="() => (void | (() => void))" required>
+  The effect function to run. Can optionally return a cleanup function that will be called before the effect runs again or when the component unmounts.
+
+  ```javascript
+  useEffect(() => {
+    // Effect logic
+    
+    return () => {
+      // Cleanup logic
+    }
+  })
+  ```
+</ParamField>
+
+<ParamField path="deps" type="any[]">
+  Optional array of dependencies. The effect only re-runs if one of the dependencies has changed.
+
+  - **Omit**: Effect runs after every render
+  - **Empty array `[]`**: Effect runs only once after initial render
+  - **With values**: Effect runs when any dependency changes
+</ParamField>
+
+## Returns
+
+`void` - This hook doesn't return a value.
+
+## Usage
+
+### Basic Effect
+
+```jsx
+import { useEffect } from '@ryunixjs/core'
+
+function DocumentTitle({ title }) {
+  useEffect(() => {
+    document.title = title
+  }, [title])
+
+  return <div>Check the document title</div>
+}
+```
+
+### Data Fetching
+
+```jsx
+import { useStore, useEffect } from '@ryunixjs/core'
+
+function UserProfile({ userId }) {
+  const [user, setUser] = useStore(null)
+  const [loading, setLoading] = useStore(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    setLoading(true)
+    fetch(`/api/users/${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled) {
+          setUser(data)
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
+  if (loading) return <div>Loading...</div>
+  return <div>{user?.name}</div>
+}
+```
+
+### Event Listeners
+
+```jsx
+import { useStore, useEffect } from '@ryunixjs/core'
+
+function WindowSize() {
+  const [size, setSize] = useStore({
+    width: window.innerWidth,
+    height: window.innerHeight
+  })
+
+  useEffect(() => {
+    const handleResize = () => {
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      })
+    }
+
+    window.addEventListener('resize', handleResize)
+    
+    // Cleanup function
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, []) // Empty deps - only set up once
+
+  return <div>{size.width} x {size.height}</div>
+}
+```
+
+### Subscriptions
+
+```jsx
+import { useStore, useEffect } from '@ryunixjs/core'
+
+function ChatRoom({ roomId }) {
+  const [messages, setMessages] = useStore([])
+
+  useEffect(() => {
+    const subscription = ChatAPI.subscribe(roomId, (message) => {
+      setMessages(prev => [...prev, message])
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [roomId])
+
+  return (
+    <div>
+      {messages.map(msg => <div key={msg.id}>{msg.text}</div>)}
+    </div>
+  )
+}
+```
+
+### Timers
+
+```jsx
+import { useStore, useEffect } from '@ryunixjs/core'
+
+function Timer() {
+  const [seconds, setSeconds] = useStore(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSeconds(prev => prev + 1)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  return <div>Seconds: {seconds}</div>
+}
+```
+
+## Dependency Array Behavior
+
+Dependencies are compared using `Object.is()`:
+
+```javascript
+const haveDepsChanged = (oldDeps, newDeps) => {
+  if (!oldDeps || !newDeps) return true
+  if (oldDeps.length !== newDeps.length) return true
+  return oldDeps.some((dep, i) => !Object.is(dep, newDeps[i]))
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:10-14`
+
+<Note>
+  `Object.is()` compares values by identity for objects and arrays. New object/array instances will always be considered different, even if they have the same contents.
+</Note>
+
+### Dependency Array Patterns
+
+```jsx
+// ❌ Runs on every render (usually not what you want)
+useEffect(() => {
+  console.log('Every render')
+})
+
+// ✅ Runs only on mount
+useEffect(() => {
+  console.log('Once on mount')
+}, [])
+
+// ✅ Runs when count changes
+useEffect(() => {
+  console.log('Count changed:', count)
+}, [count])
+
+// ✅ Runs when any dependency changes
+useEffect(() => {
+  console.log('User or posts changed')
+}, [userId, postId])
+```
+
+## Validation and Error Handling
+
+The hook validates its arguments:
+
+```javascript
+if (!is.function(callback)) {
+  throw new Error('useEffect callback must be a function')
+}
+if (deps !== undefined && !Array.isArray(deps)) {
+  throw new Error('useEffect dependencies must be an array or undefined')
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:128-133`
+
+<Warning>
+  Always ensure the callback is a function and dependencies (if provided) are an array. Type errors will be thrown if these conditions aren't met.
+</Warning>
+
+## SSR Behavior
+
+Effects don't run during server-side rendering:
+
+```javascript
+const state = getState()
+if (state.isServerRendering) {
+  return
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:121-124`
+
+<Note>
+  On the server, `useEffect` is a no-op. Effects only run in the browser after hydration. Use `useLayoutEffect` if you need synchronous execution, but be aware it also doesn't run on the server.
+</Note>
+
+## Cleanup Functions
+
+Cleanup functions are stored and called when:
+1. The component unmounts
+2. Before the effect runs again (if dependencies changed)
+
+```javascript
+const hook = {
+  hookID: hookIndex,
+  type: RYUNIX_TYPES.RYUNIX_EFFECT,
+  deps,
+  effect: hasChanged ? callback : null,
+  cancel: oldHook?.cancel,  // Previous cleanup function
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:139-145`
+
+## Common Pitfalls
+
+### Missing Dependencies
+
+```jsx
+// ❌ Missing 'count' in dependencies
+const [count, setCount] = useStore(0)
+useEffect(() => {
+  const interval = setInterval(() => {
+    console.log(count)  // Will always log the initial value
+  }, 1000)
+  return () => clearInterval(interval)
+}, [])
+
+// ✅ Include all dependencies
+useEffect(() => {
+  const interval = setInterval(() => {
+    console.log(count)
+  }, 1000)
+  return () => clearInterval(interval)
+}, [count])
+```
+
+### Object/Array Dependencies
+
+```jsx
+// ❌ New object on every render
+const options = { userId: 123 }
+useEffect(() => {
+  fetchUser(options)  // Runs on every render!
+}, [options])
+
+// ✅ Use primitive values
+const userId = 123
+useEffect(() => {
+  fetchUser({ userId })
+}, [userId])
+
+// ✅ Or memoize the object
+const options = useMemo(() => ({ userId: 123 }), [])
+useEffect(() => {
+  fetchUser(options)
+}, [options])
+```
+
+## Related Hooks
+
+- [useMemo](/api/hooks/useMemo) - Memoize computed values to optimize dependency arrays
+- [useCallback](/api/hooks/useCallback) - Memoize callback functions to stabilize dependencies
+- useLayoutEffect - Synchronous version that runs before browser paint (see the "SSR Behavior" section above for details)

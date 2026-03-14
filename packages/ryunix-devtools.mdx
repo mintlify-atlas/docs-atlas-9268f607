@@ -1,0 +1,573 @@
+---
+title: '@unsetsoft/ryunix-devtools'
+description: Browser extension for debugging and inspecting RyunixJS applications
+---
+
+## Overview
+
+`@unsetsoft/ryunix-devtools` is a Chrome/Edge browser extension that provides powerful debugging capabilities for RyunixJS applications. It offers real-time component tree visualization, props inspection, hook tracking, and performance profiling directly in your browser's DevTools.
+
+<CardGroup cols={2}>
+  <Card title="Component Tree" icon="diagram-project">
+    Visualize your component hierarchy in real-time
+  </Card>
+  <Card title="Props Inspector" icon="magnifying-glass">
+    Inspect and monitor component props and state
+  </Card>
+  <Card title="Hook Tracking" icon="link">
+    Track hook calls and values across renders
+  </Card>
+  <Card title="Auto-Detection" icon="radar">
+    Automatically detects RyunixJS applications
+  </Card>
+</CardGroup>
+
+## Installation
+
+### Chrome Web Store (Coming Soon)
+
+```
+Currently in development. Install manually for now.
+```
+
+### Manual Installation
+
+<Steps>
+  <Step title="Download or Clone">
+    Download the extension package or clone the repository:
+    
+    ```bash
+    git clone https://github.com/UnSetSoft/Ryunixjs.git
+    cd Ryunixjs/packages/ryunix-devtools
+    ```
+  </Step>
+  
+  <Step title="Open Chrome Extensions">
+    Navigate to `chrome://extensions/` in your Chrome browser.
+  </Step>
+  
+  <Step title="Enable Developer Mode">
+    Toggle the "Developer mode" switch in the top right corner.
+  </Step>
+  
+  <Step title="Load Extension">
+    Click "Load unpacked" and select the `packages/ryunix-devtools` folder.
+  </Step>
+  
+  <Step title="Verify Installation">
+    Open DevTools (F12) on any RyunixJS application and look for the "Ryunix" tab.
+  </Step>
+</Steps>
+
+<Tip>
+The extension icon will light up when a RyunixJS application is detected on the current page.
+</Tip>
+
+## Package Information
+
+| Property | Value |
+| :--- | :--- |
+| **Package Name** | `@unsetsoft/ryunix-devtools` |
+| **Current Version** | `1.3.0` |
+| **License** | MIT |
+| **Repository** | [github.com/UnSetSoft/Ryunixjs](https://github.com/UnSetSoft/Ryunixjs) |
+| **Browser Support** | Chrome 88+, Edge 88+ |
+| **Manifest Version** | 3 |
+
+## Features
+
+### Component Tree Visualization
+
+The extension displays your entire component hierarchy in a collapsible tree structure:
+
+- **Root Components**: Top-level components in your application
+- **Nested Components**: Child components with indentation
+- **Component Names**: Function or class component names
+- **Component Types**: Visual indicators for different component types
+- **Real-time Updates**: Tree updates automatically on state changes
+
+**Viewing the Tree:**
+
+1. Open DevTools (F12)
+2. Click the "Ryunix" tab
+3. Explore the component tree in the left panel
+
+<Note>
+Click any component in the tree to inspect its props, state, and hooks in the right panel.
+</Note>
+
+### Props Inspection
+
+Inspect component props in real-time:
+
+- **Current Props**: All props passed to the selected component
+- **Prop Types**: Automatic type detection (string, number, object, function)
+- **Deep Inspection**: Nested objects and arrays are fully expandable
+- **Value Changes**: Props that changed since last render are highlighted
+
+**Example Props Display:**
+
+```json
+{
+  "title": "Hello World",
+  "count": 42,
+  "user": {
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "onClick": "function() { ... }"
+}
+```
+
+### Hook Tracking
+
+Monitor all hooks used in a component:
+
+- **Hook Types**: useStore, useEffect, useMemo, etc.
+- **Hook Values**: Current values for state hooks
+- **Hook Dependencies**: Dependency arrays for effects and memos
+- **Hook Count**: Total number of hooks per component
+
+**Hook Display Example:**
+
+```
+1. useStore
+   Value: 0
+   
+2. useEffect
+   Dependencies: [count]
+   
+3. useMemo
+   Dependencies: [data, filter]
+   Value: [filtered data]
+```
+
+<Warning>
+Hook indices must remain stable. Conditional hooks will trigger warnings in the DevTools.
+</Warning>
+
+### Automatic Application Detection
+
+The extension automatically detects RyunixJS applications:
+
+- **Injection on Load**: Hook script injected at document start
+- **Global Detection**: Checks for `window.Ryunix` object
+- **Visual Indicator**: Extension icon highlights when RyunixJS is detected
+- **Connection Status**: Shows "Ryunix application detected" in the panel
+
+### Performance Monitoring
+
+Track component performance metrics:
+
+- **Render Count**: Number of times each component rendered
+- **Render Time**: Time taken for each render (when profiling enabled)
+- **Update Triggers**: What caused each re-render
+
+## Extension Architecture
+
+The DevTools extension consists of several components:
+
+### Manifest (manifest.json)
+
+```json
+{
+  "manifest_version": 3,
+  "name": "Ryunix DevTools",
+  "version": "1.2.3-canary.1",
+  "description": "Ryunix DevTools Extension",
+  "devtools_page": "devtools.html",
+  "permissions": ["tabs"],
+  "host_permissions": ["<all_urls>"]
+}
+```
+
+### Content Script
+
+Injected into all pages to detect RyunixJS:
+
+- **File**: `content-script.js`
+- **Purpose**: Bridge between page and extension
+- **Run At**: `document_start` for early injection
+
+### Hook Script
+
+Integrates with RyunixJS runtime:
+
+- **File**: `hook.js`
+- **Purpose**: Captures component data and state
+- **Access**: Web-accessible resource
+
+### DevTools Panel
+
+The main UI displayed in DevTools:
+
+- **File**: `panel.html` + `panel.js`
+- **Purpose**: Displays component tree and inspector
+- **Style**: Matches Chrome DevTools theme
+
+### Background Service Worker
+
+Manages extension lifecycle:
+
+- **File**: `background.js`
+- **Purpose**: Communication hub between components
+
+## Usage Guide
+
+### Opening DevTools
+
+1. Open a RyunixJS application in Chrome/Edge
+2. Press F12 or right-click → "Inspect"
+3. Find the "Ryunix" tab in DevTools
+
+<Tip>
+If you don't see the "Ryunix" tab, refresh the page with DevTools open.
+</Tip>
+
+### Inspecting Components
+
+<Steps>
+  <Step title="Select Component">
+    Click any component in the tree view on the left panel.
+  </Step>
+  
+  <Step title="View Props">
+    The right panel displays all props passed to the component.
+  </Step>
+  
+  <Step title="Check Hooks">
+    Scroll down in the right panel to see all hooks used by the component.
+  </Step>
+  
+  <Step title="Track Changes">
+    Make changes in your app and watch the DevTools update in real-time.
+  </Step>
+</Steps>
+
+### Reading the Component Tree
+
+```
+▼ App
+  ▼ Layout
+    ▼ Header
+      - Logo
+      - Navigation
+    ▼ MainContent
+      ▼ Sidebar
+        - MenuItem
+        - MenuItem
+      ▼ Content
+        - Article
+    - Footer
+```
+
+- **▼**: Expanded component with children
+- **▶**: Collapsed component (click to expand)
+- **-**: Leaf component (no children)
+
+### Filtering Components
+
+Use the search box to filter components by name:
+
+```
+Search: Header
+
+Results:
+▼ Header
+  - Logo
+  - Navigation
+```
+
+### Exporting Component Data
+
+Right-click a component to:
+
+- **Copy Props**: Copy props as JSON
+- **Copy Component Name**: Copy the component function name
+- **Log to Console**: Log full component data to browser console
+
+## Integration with RyunixJS
+
+The DevTools extension integrates deeply with RyunixJS:
+
+### Runtime Hook
+
+The hook script accesses RyunixJS internals:
+
+```javascript
+// Automatically injected
+if (window.Ryunix) {
+  window.__RYUNIX_DEVTOOLS_HOOK__ = {
+    onCommit: (fiber) => {
+      // Send component data to DevTools
+    },
+    onEffect: (effect) => {
+      // Track effects
+    }
+  }
+}
+```
+
+### Fiber Tree Access
+
+The extension reads the fiber tree structure:
+
+- **Fiber Nodes**: Internal component representation
+- **Hook Lists**: Hook state from fiber.hooks
+- **Props**: Component props from fiber.props
+- **Parent/Child Relations**: fiber.parent and fiber.child
+
+<Warning>
+The DevTools hook accesses internal APIs that may change. Always use the DevTools version matching your RyunixJS version.
+</Warning>
+
+### State Inspection
+
+For components using `useStore`:
+
+```javascript
+function Counter() {
+  const [count, setCount] = useStore(0) // Visible in DevTools
+  // ...
+}
+```
+
+**DevTools Display:**
+
+```
+Hooks:
+  1. useStore
+     Type: RYUNIX_STORE
+     State: 0
+```
+
+## Compatibility
+
+### Browser Support
+
+| Browser | Minimum Version | Status |
+| :--- | :--- | :--- |
+| Google Chrome | 88+ | ✅ Supported |
+| Microsoft Edge | 88+ | ✅ Supported |
+| Brave | 1.20+ | ✅ Supported |
+| Opera | 74+ | ⚠️ Untested |
+| Firefox | - | ❌ Not supported (different manifest) |
+
+### RyunixJS Version Compatibility
+
+| DevTools Version | RyunixJS Version | Compatible |
+| :--- | :--- | :--- |
+| 1.3.0 | 1.3.0+ | ✅ Yes |
+| 1.3.0 | 1.2.x | ⚠️ Limited |
+| 1.3.0 | < 1.2.0 | ❌ No |
+
+<Note>
+Always use DevTools and RyunixJS versions from the same release channel (both stable or both canary).
+</Note>
+
+## Development
+
+### Building from Source
+
+```bash
+cd packages/ryunix-devtools
+npm run build  # Creates devtools.zip
+```
+
+### Development Workflow
+
+<Steps>
+  <Step title="Make Changes">
+    Edit source files in `packages/ryunix-devtools/`
+  </Step>
+  
+  <Step title="Reload Extension">
+    Go to `chrome://extensions/` and click the reload icon for Ryunix DevTools
+  </Step>
+  
+  <Step title="Test">
+    Open a RyunixJS app and check the DevTools panel
+  </Step>
+  
+  <Step title="Debug">
+    Right-click the DevTools panel → "Inspect" to debug the extension itself
+  </Step>
+</Steps>
+
+### File Structure
+
+```
+ryunix-devtools/
+├── manifest.json           # Extension manifest (v3)
+├── devtools.html           # DevTools entry page
+├── devtools.js             # DevTools initialization
+├── panel.html              # Main panel UI
+├── panel.js                # Panel logic and rendering
+├── content-script.js       # Page script injector
+├── hook.js                 # RyunixJS integration hook
+├── background.js           # Service worker
+└── package.json            # Package metadata
+```
+
+### Debugging the Extension
+
+**Debug the Panel:**
+
+1. Open DevTools (F12)
+2. Right-click the "Ryunix" tab
+3. Select "Inspect"
+4. A new DevTools window opens for the extension
+
+**Debug the Content Script:**
+
+1. Open DevTools on any page
+2. Go to Sources → Content Scripts
+3. Find `content-script.js`
+4. Set breakpoints and debug
+
+**View Background Service Worker:**
+
+1. Go to `chrome://extensions/`
+2. Find Ryunix DevTools
+3. Click "service worker" link
+
+## Troubleshooting
+
+### DevTools Not Appearing
+
+**Problem:** The "Ryunix" tab doesn't appear in DevTools.
+
+**Solutions:**
+
+1. Refresh the page with DevTools open
+2. Check if the extension is enabled at `chrome://extensions/`
+3. Verify the page is using RyunixJS:
+   ```javascript
+   console.log(window.Ryunix) // Should not be undefined
+   ```
+
+### Component Tree Not Updating
+
+**Problem:** The tree doesn't update when components change.
+
+**Solutions:**
+
+1. Close and reopen DevTools
+2. Reload the extension at `chrome://extensions/`
+3. Check console for errors in the DevTools panel
+
+### Hook Data Missing
+
+**Problem:** Hook values don't appear in the inspector.
+
+**Solutions:**
+
+1. Ensure you're using RyunixJS 1.3.0 or later
+2. Check that hooks are called at the top level of components
+3. Verify no conditional hook calls (which would break rules of hooks)
+
+### Extension Not Detecting App
+
+**Problem:** Extension doesn't recognize a RyunixJS app.
+
+**Solutions:**
+
+1. Check that RyunixJS is loaded before the DevTools hook:
+   ```html
+   <script src="ryunix.js"></script> <!-- Must be before app code -->
+   ```
+2. Verify `window.Ryunix` exists in the browser console
+3. Reload the page with the extension enabled
+
+## Privacy and Permissions
+
+The extension requests these permissions:
+
+| Permission | Purpose |
+| :--- | :--- |
+| `tabs` | Access tab information for detection |
+| `<all_urls>` | Inject content script into all pages |
+
+<Note>
+The extension only activates and collects data on pages running RyunixJS. No data is sent to external servers.
+</Note>
+
+### Data Collection
+
+The extension collects:
+
+- Component names and hierarchy
+- Props and state values
+- Hook types and dependencies
+
+**The extension does NOT:**
+
+- Send data to remote servers
+- Track browsing history
+- Access data from other tabs
+- Collect personal information
+
+## Future Features
+
+### Planned for v2.0
+
+- **Time Travel Debugging**: Step through state changes
+- **Performance Profiler**: Detailed render timing and bottleneck detection
+- **Network Inspector**: Track server actions and data fetching
+- **State Diffing**: Visual diff of state changes between renders
+- **Component Highlighter**: Hover in DevTools to highlight in page
+- **Editable Props**: Modify props in real-time for testing
+
+### Community Requests
+
+- Firefox extension support
+- Safari extension support
+- Standalone Electron app
+- VS Code integration
+
+<Tip>
+Vote for features or contribute on [GitHub Issues](https://github.com/UnSetSoft/Ryunixjs/issues).
+</Tip>
+
+## Contributing
+
+We welcome contributions to the DevTools extension:
+
+<Steps>
+  <Step title="Fork Repository">
+    Fork the [RyunixJS repository](https://github.com/UnSetSoft/Ryunixjs)
+  </Step>
+  
+  <Step title="Create Branch">
+    ```bash
+    git checkout -b feature/devtools-improvement
+    ```
+  </Step>
+  
+  <Step title="Make Changes">
+    Edit files in `packages/ryunix-devtools/`
+  </Step>
+  
+  <Step title="Test Locally">
+    Load the extension as unpacked and test with sample apps
+  </Step>
+  
+  <Step title="Submit PR">
+    Create a pull request with a clear description of changes
+  </Step>
+</Steps>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/UnSetSoft/Ryunixjs">
+    View source code and contribute
+  </Card>
+  <Card title="Report Issues" icon="bug" href="https://github.com/UnSetSoft/Ryunixjs/issues">
+    Report bugs or request features
+  </Card>
+  <Card title="Core Package" icon="cube" href="/packages/ryunixjs">
+    Learn about RyunixJS internals
+  </Card>
+
+</CardGroup>

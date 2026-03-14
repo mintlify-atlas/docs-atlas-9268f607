@@ -1,0 +1,661 @@
+---
+title: Custom Webpack Loaders
+description: Deep dive into RSC and Server Actions loaders that power Ryunix's Island Architecture
+---
+
+Ryunix uses custom Webpack loaders to seamlessly blur the lines between server and client code, enabling Island Architecture and Server Actions without explicit developer scaffolding.
+
+## Loader Pipeline
+
+Every JavaScript/JSX/RYX file passes through multiple loaders in sequence:
+
+<Steps>
+  <Step title="thread-loader">
+    Runs subsequent loaders in worker pools for parallel processing
+  </Step>
+  <Step title="ryunix-server-action-loader">
+    Transforms `// @server` files into RPC proxies or action registries
+  </Step>
+  <Step title="ryunix-rsc-loader">
+    Tags Client Components with unique IDs for island hydration
+  </Step>
+  <Step title="babel-loader">
+    Transpiles JSX and modern JavaScript
+  </Step>
+</Steps>
+
+**Webpack Configuration:**
+
+```javascript webpack.config.mjs:196
+{
+  test: /\.(js|jsx|ryx)$/,
+  exclude: /node_modules/,
+  use: [
+    'thread-loader',
+    './loaders/ryunix-server-action-loader.mjs',
+    './loaders/ryunix-rsc-loader.mjs',
+    {
+      loader: 'babel-loader',
+      options: {
+        presets: ['@babel/preset-env', '@babel/preset-react'],
+        plugins: [
+          ['@babel/plugin-transform-react-jsx', {
+            pragma: 'Ryunix.createElement',
+            pragmaFrag: 'Ryunix.Fragment',
+          }],
+        ],
+      },
+    },
+  ],
+}
+```
+
+## Ryunix RSC Loader
+
+**File:** `loaders/ryunix-rsc-loader.mjs`
+
+The RSC (Ryunix Server Components) loader enables Island Architecture by automatically detecting Client Components and tagging them with unique identifiers.
+
+### Detection Logic
+
+A component is treated as a **Client Component** if:
+
+1. File contains `// @client` or `//@client` directive
+2. File contains `// @server` is **not** present, AND
+3. Code uses React hooks (detected via regex)
+
+**Detection Code:**
+
+```javascript ryunix-rsc-loader.mjs:4
+const isServer = content.includes('//@server') || content.includes('// @server');
+const isClient = content.includes('//@client') || content.includes('// @client');
+
+const hasHooks = /use(Store|Effect|LayoutEffect|Context|Ref|Memo|Id|Transition)/.test(content);
+
+if (isClient || (!isServer && hasHooks)) {
+  // Tag as Client Component
+}
+```
+
+**Detected Hooks:**
+
+- `useStore`
+- `useEffect`
+- `useLayoutEffect`
+- `useContext`
+- `useRef`
+- `useMemo`
+- `useId`
+- `useTransition`
+
+### Component Tagging
+
+For each Client Component, the loader:
+
+1. Generates an MD5 hash from the file path
+2. Injects runtime code to tag the exported component
+3. Registers the component in `window.__RYUNIX_ISLANDS__`
+
+**Hash Generation:**
+
+```javascript ryunix-rsc-loader.mjs:11
+import crypto from 'crypto';
+
+const hash = crypto.createHash('md5')
+  .update(this.resourcePath)
+  .digest('hex')
+  .slice(0, 8);
+```
+
+**Injected Code:**
+
+```javascript
+/** Ryunix RSC Optimization **/
+try {
+  let _ryx_target = null;
+  if (typeof __webpack_exports__ !== 'undefined' && __webpack_exports__["default"]) {
+    _ryx_target = __webpack_exports__["default"];
+  } else if (typeof exports !== 'undefined' && exports.default) {
+    _ryx_target = exports.default;
+  } else if (typeof module !== 'undefined' && module.exports && module.exports.default) {
+    _ryx_target = module.exports.default;
+  }
+
+  if (_ryx_target && typeof _ryx_target === 'function') {
+    if (process.env.RYUNIX_DEBUG) {
+      console.log("[RSC Loader Execution] Tagging", _ryx_target.name, "with ID", "a3f8d9c1");
+    }
+    _ryx_target.ryunix_client_id = "a3f8d9c1";
+    if (typeof window !== 'undefined') {
+      window.__RYUNIX_ISLANDS__ = window.__RYUNIX_ISLANDS__ || {};
+      window.__RYUNIX_ISLANDS__["a3f8d9c1"] = _ryx_target;
+    }
+  }
+} catch (e) { }
+```
+
+**Source Location:** `ryunix-rsc-loader.mjs:15-37`
+
+### Island Hydration Flow
+
+<Steps>
+  <Step title="Server Renders Component">
+    SSR outputs `<div data-ryunix-island="a3f8d9c1">...</div>`
+  </Step>
+  <Step title="Client Loads Bundle">
+    Webpack chunk loads and executes RSC loader injection
+  </Step>
+  <Step title="Component Registration">
+    Component function stored in `window.__RYUNIX_ISLANDS__["a3f8d9c1"]`
+  </Step>
+  <Step title="Hydration">
+    `Ryunix.init()` finds all `[data-ryunix-island]` elements and calls `hydrateIslands()`
+  </Step>
+  <Step title="Mount">
+    Looks up component in global dictionary and mounts to DOM
+  </Step>
+</Steps>
+
+**Hydration Pseudocode:**
+
+```javascript
+function hydrateIslands() {
+  const islands = document.querySelectorAll('[data-ryunix-island]')
+  
+  islands.forEach(el => {
+    const hash = el.getAttribute('data-ryunix-island')
+    const Component = window.__RYUNIX_ISLANDS__[hash]
+    
+    if (Component) {
+      Ryunix.hydrate(Component, el)
+    }
+  })
+}
+```
+
+### Example Transformation
+
+**Input:**
+
+```javascript src/components/Counter.ryx
+import { useStore } from '@unsetsoft/ryunixjs'
+
+export default function Counter() {
+  const [count, setCount] = useStore(0)
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+**Output (simplified):**
+
+```javascript
+import { useStore } from '@unsetsoft/ryunixjs'
+
+export default function Counter() {
+  const [count, setCount] = useStore(0)
+  return Ryunix.createElement('button', { onClick: () => setCount(count + 1) }, count)
+}
+
+// RSC Loader injection
+try {
+  const _ryx_target = Counter
+  _ryx_target.ryunix_client_id = "a3f8d9c1"
+  if (typeof window !== 'undefined') {
+    window.__RYUNIX_ISLANDS__ = window.__RYUNIX_ISLANDS__ || {}
+    window.__RYUNIX_ISLANDS__["a3f8d9c1"] = _ryx_target
+  }
+} catch (e) { }
+```
+
+<Note>
+The RSC loader only injects code for components with `export default`. Named exports are ignored.
+</Note>
+
+## Server Actions Loader
+
+**File:** `loaders/ryunix-server-action-loader.mjs`
+
+The Server Actions loader enables seamless RPC (Remote Procedure Call) between client and server by transforming `// @server` annotated files.
+
+### How It Works
+
+Server Actions leverage Babel AST transformation to:
+
+1. **Client Build**: Replace async function bodies with RPC proxy calls
+2. **Server Build**: Register functions in a global dictionary for invocation
+
+**Entry Check:**
+
+```javascript ryunix-server-action-loader.mjs:5
+if (!/^\s*\/\/\s*@server/m.test(source)) {
+  return source; // Skip non-server files
+}
+```
+
+### Client Transformation
+
+For client builds (`target: 'web'`), the loader:
+
+1. Parses the file with Babel
+2. Finds all exported async functions
+3. Replaces them with `createActionProxy()` calls
+
+**Before:**
+
+```javascript actions/users.js
+// @server
+export async function getUsers() {
+  const users = await db.users.findMany()
+  return users
+}
+
+export async function createUser(name, email) {
+  const user = await db.users.create({ name, email })
+  return user
+}
+```
+
+**After (Client Build):**
+
+```javascript
+import { createActionProxy as __ryunixCreateActionProxy } from '@unsetsoft/ryunixjs';
+
+export const getUsers = __ryunixCreateActionProxy("a3f8d9c1_getUsers");
+export const createUser = __ryunixCreateActionProxy("a3f8d9c1_createUser");
+```
+
+**Babel Transformation Logic:**
+
+```javascript ryunix-server-action-loader.mjs:18
+plugins: [
+  function({ types: t }) {
+    return {
+      visitor: {
+        ExportNamedDeclaration(path) {
+          const declaration = path.node.declaration;
+          
+          // Function Declaration: export async function foo() {}
+          if (t.isFunctionDeclaration(declaration) && declaration.async) {
+            const name = declaration.id.name;
+            const actionId = `${hash}_${name}`;
+
+            if (!isServer) {
+              path.replaceWith(
+                t.exportNamedDeclaration(
+                  t.variableDeclaration("const", [
+                    t.variableDeclarator(
+                      t.identifier(name),
+                      t.callExpression(
+                        t.identifier('__ryunixCreateActionProxy'),
+                        [t.stringLiteral(actionId)]
+                      )
+                    )
+                  ])
+                )
+              );
+            }
+          }
+          
+          // Arrow Function: export const foo = async () => {}
+          else if (t.isVariableDeclaration(declaration)) {
+            declaration.declarations.forEach(decl => {
+              if ((t.isArrowFunctionExpression(decl.init) || t.isFunctionExpression(decl.init)) && decl.init.async) {
+                const name = decl.id.name;
+                const actionId = `${hash}_${name}`;
+                
+                if (!isServer) {
+                  decl.init = t.callExpression(
+                    t.identifier('__ryunixCreateActionProxy'),
+                    [t.stringLiteral(actionId)]
+                  );
+                }
+              }
+            });
+          }
+        }
+      }
+    };
+  }
+]
+```
+
+**Source Location:** `ryunix-server-action-loader.mjs:15-66`
+
+### Server Transformation
+
+For server builds (`target: 'node'`), the loader:
+
+1. Parses the file with Babel (preserves function bodies)
+2. Appends registration code to populate `globalThis.__RYUNIX_SERVER_ACTIONS__`
+
+**Before:**
+
+```javascript actions/users.js
+// @server
+export async function getUsers() {
+  const users = await db.users.findMany()
+  return users
+}
+```
+
+**After (Server Build):**
+
+```javascript
+export async function getUsers() {
+  const users = await db.users.findMany()
+  return users
+}
+
+// Ryunix Server Actions Registration
+if (typeof globalThis.__RYUNIX_SERVER_ACTIONS__ === 'undefined') {
+  globalThis.__RYUNIX_SERVER_ACTIONS__ = {};
+}
+globalThis.__RYUNIX_SERVER_ACTIONS__['a3f8d9c1_getUsers'] = getUsers;
+```
+
+**Registration Logic:**
+
+```javascript ryunix-server-action-loader.mjs:71
+if (isServer && actionNames.length > 0) {
+  code += `\n\n// Ryunix Server Actions Registration`;
+  code += `\nif (typeof globalThis.__RYUNIX_SERVER_ACTIONS__ === 'undefined') {`;
+  code += `\n  globalThis.__RYUNIX_SERVER_ACTIONS__ = {};`;
+  code += `\n}`;
+  actionNames.forEach(name => {
+    const actionId = `${hash}_${name}`;
+    code += `\nglobalThis.__RYUNIX_SERVER_ACTIONS__['${actionId}'] = ${name};`;
+  });
+}
+```
+
+### Action ID Generation
+
+Action IDs are SHA-256 hashes of the file path + function name:
+
+```javascript ryunix-server-action-loader.mjs:11
+import { createHash } from 'crypto';
+
+const hash = createHash('sha256')
+  .update(this.resourcePath)
+  .digest('hex')
+  .slice(0, 8);
+
+const actionId = `${hash}_${functionName}`;
+// Example: "a3f8d9c1_getUsers"
+```
+
+### RPC Execution Flow
+
+<Steps>
+  <Step title="Client Invocation">
+    User calls `await getUsers()` in component
+  </Step>
+  <Step title="Proxy Intercept">
+    `createActionProxy()` intercepts call and sends `POST /_ryunix/action`
+  </Step>
+  <Step title="Request Payload">
+    JSON: `{ actionId: "a3f8d9c1_getUsers", args: [] }`
+  </Step>
+  <Step title="Server Lookup">
+    Dev/Prod server reads `global.__RYUNIX_SERVER_ACTIONS__["a3f8d9c1_getUsers"]`
+  </Step>
+  <Step title="Execute Function">
+    Invokes actual async function with deserialized arguments
+  </Step>
+  <Step title="Return Result">
+    Serializes result to JSON and sends response
+  </Step>
+  <Step title="Client Resolution">
+    Proxy resolves promise with deserialized data
+  </Step>
+</Steps>
+
+**Server Endpoint Handler:**
+
+```javascript webpack.config.mjs:401
+if (req.method === 'POST' && req.url === '/_ryunix/action') {
+  const { actionId, args } = JSON.parse(body);
+  const action = global.__RYUNIX_SERVER_ACTIONS__?.[actionId];
+  
+  if (!action) {
+    return res.status(404).json({ error: `Server Action ${actionId} not found` });
+  }
+  
+  const result = await action(...args);
+  return res.json(result);
+}
+```
+
+### Example: Full Transformation
+
+**Source File:**
+
+```javascript app/actions/auth.js
+// @server
+import bcrypt from 'bcrypt'
+import { db } from '../lib/db'
+
+export async function login(email, password) {
+  const user = await db.users.findUnique({ where: { email } })
+  if (!user) throw new Error('User not found')
+  
+  const valid = await bcrypt.compare(password, user.passwordHash)
+  if (!valid) throw new Error('Invalid password')
+  
+  return { id: user.id, name: user.name, email: user.email }
+}
+
+export async function register(name, email, password) {
+  const passwordHash = await bcrypt.hash(password, 10)
+  const user = await db.users.create({ data: { name, email, passwordHash } })
+  return { id: user.id, name: user.name, email: user.email }
+}
+```
+
+**Client Build Output:**
+
+```javascript
+import { createActionProxy as __ryunixCreateActionProxy } from '@unsetsoft/ryunixjs';
+
+export const login = __ryunixCreateActionProxy("b7e4f2a9_login");
+export const register = __ryunixCreateActionProxy("b7e4f2a9_register");
+```
+
+**Server Build Output:**
+
+```javascript
+import bcrypt from 'bcrypt'
+import { db } from '../lib/db'
+
+export async function login(email, password) {
+  const user = await db.users.findUnique({ where: { email } })
+  if (!user) throw new Error('User not found')
+  
+  const valid = await bcrypt.compare(password, user.passwordHash)
+  if (!valid) throw new Error('Invalid password')
+  
+  return { id: user.id, name: user.name, email: user.email }
+}
+
+export async function register(name, email, password) {
+  const passwordHash = await bcrypt.hash(password, 10)
+  const user = await db.users.create({ data: { name, email, passwordHash } })
+  return { id: user.id, name: user.name, email: user.email }
+}
+
+// Ryunix Server Actions Registration
+if (typeof globalThis.__RYUNIX_SERVER_ACTIONS__ === 'undefined') {
+  globalThis.__RYUNIX_SERVER_ACTIONS__ = {};
+}
+globalThis.__RYUNIX_SERVER_ACTIONS__['b7e4f2a9_login'] = login;
+globalThis.__RYUNIX_SERVER_ACTIONS__['b7e4f2a9_register'] = register;
+```
+
+**Usage in Component:**
+
+```javascript app/components/LoginForm.client.ryx
+import { useState } from '@unsetsoft/ryunixjs'
+import { login } from '../actions/auth'
+
+export default function LoginForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    try {
+      const user = await login(email, password) // RPC call!
+      console.log('Logged in:', user)
+    } catch (err) {
+      console.error('Login failed:', err.message)
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={email} onChange={e => setEmail(e.target.value)} />
+      <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+      <button type="submit">Login</button>
+    </form>
+  )
+}
+```
+
+## Thread Loader
+
+Ryunix uses `thread-loader` to parallelize loader execution:
+
+```javascript webpack.config.mjs:201
+use: [
+  'thread-loader',
+  // ... other loaders
+]
+```
+
+**Benefits:**
+
+- Faster builds by running loaders in worker pools
+- Reduces main thread blocking
+- Automatically manages worker lifecycle
+
+**Configuration:**
+
+Ryunix uses default thread-loader settings (2 workers per CPU core).
+
+## Babel Loader Configuration
+
+Final transformation stage:
+
+```javascript webpack.config.mjs:205
+{
+  loader: 'babel-loader',
+  options: {
+    presets: [
+      ['@babel/preset-env', {
+        targets: 'defaults and not IE 11',
+        useBuiltIns: false,
+        modules: false,
+        bugfixes: true,
+      }],
+      '@babel/preset-react',
+    ],
+    cacheDirectory: '.ryunix/cache/babel-loader',
+    plugins: [
+      ['@babel/plugin-transform-react-jsx', {
+        pragma: 'Ryunix.createElement',
+        pragmaFrag: 'Ryunix.Fragment',
+      }],
+    ],
+  },
+}
+```
+
+**Key Settings:**
+
+- **targets**: Modern browsers (no IE 11)
+- **useBuiltIns**: false (no polyfills injected)
+- **modules**: false (preserve ES modules for tree shaking)
+- **pragma**: `Ryunix.createElement` instead of `React.createElement`
+- **cacheDirectory**: Speeds up rebuilds
+
+## Debugging Loaders
+
+Enable debug output:
+
+```javascript ryunix.config.js
+export default {
+  debug: true,
+}
+```
+
+**RSC Loader Debug Output:**
+
+```bash Terminal
+[RSC Loader Execution] Tagging Counter with ID a3f8d9c1
+[RSC Loader Execution] Tagging LoginForm with ID d4e9a7f2
+```
+
+**Server Actions Debug:**
+
+Inspect registered actions:
+
+```javascript
+console.log(Object.keys(globalThis.__RYUNIX_SERVER_ACTIONS__))
+// ["b7e4f2a9_login", "b7e4f2a9_register", "c3f8a1d2_getUsers"]
+```
+
+## Performance Considerations
+
+### Loader Execution Time
+
+- **thread-loader**: +10-20ms overhead, but saves 50-200ms on large projects
+- **ryunix-rsc-loader**: Less than 5ms per file (regex-based detection)
+- **ryunix-server-action-loader**: 10-30ms per file (Babel AST parsing)
+- **babel-loader**: 20-100ms per file (transpilation)
+
+### Cache Strategy
+
+Babel loader uses filesystem cache:
+
+```bash
+.ryunix/cache/babel-loader/
+├── 0a3f8d9c1e2b4f5a.json
+├── 1b4e7f2a8c9d3e5b.json
+└── ...
+```
+
+Cache invalidates on:
+- Source code changes
+- Babel config changes
+- Loader options changes
+
+## Limitations
+
+<Warning>
+Server Actions only support **serializable arguments and return values**. Functions, class instances, and symbols cannot be transmitted.
+</Warning>
+
+**Supported Types:**
+
+- Primitives: `string`, `number`, `boolean`, `null`
+- Objects: Plain objects, arrays
+- Dates: Serialized as ISO strings
+
+**Unsupported Types:**
+
+- Functions
+- Class instances (use plain objects)
+- Symbols
+- `undefined` (use `null`)
+- Circular references
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Server Actions" icon="bolt" href="/webpack/server-actions">
+    Full guide to using Server Actions in components
+  </Card>
+  <Card title="Webpack Configuration" icon="gear" href="/webpack/configuration">
+    How loaders fit into the Webpack pipeline
+  </Card>
+</CardGroup>

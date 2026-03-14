@@ -1,0 +1,594 @@
+---
+title: '@unsetsoft/cra'
+description: Official scaffolding CLI for creating RyunixJS applications
+---
+
+## Overview
+
+`@unsetsoft/cra` (Create Ryunix App) is the official scaffolding tool for RyunixJS applications. It provides an interactive CLI experience that guides you through creating a new project with optimized defaults, modern tooling, and optional integrations like Tailwind CSS and ESLint.
+
+<CardGroup cols={2}>
+  <Card title="Interactive Setup" icon="comments">
+    Guided prompts for project configuration
+  </Card>
+  <Card title="Optimized Templates" icon="folder-tree">
+    Production-ready project structure
+  </Card>
+  <Card title="Multiple Channels" icon="code-branch">
+    Choose between stable or canary releases
+  </Card>
+  <Card title="Quick Start" icon="bolt">
+    Get running in under 60 seconds
+  </Card>
+</CardGroup>
+
+## Installation
+
+No installation required! Use `npx` to run the latest version:
+
+```bash
+npx @unsetsoft/cra@latest
+```
+
+### Global Installation (Optional)
+
+```bash
+npm install -g @unsetsoft/cra
+cra my-app
+```
+
+## Package Information
+
+| Property | Value |
+| :--- | :--- |
+| **Package Name** | `@unsetsoft/cra` |
+| **Current Version** | `1.1.20-canary.4` |
+| **License** | MIT |
+| **Repository** | [github.com/UnSetSoft/Ryunixjs](https://github.com/UnSetSoft/Ryunixjs) |
+| **Node Support** | 20, 22, 24 |
+
+## Quick Start
+
+### Basic Usage
+
+```bash
+npx @unsetsoft/cra@latest
+```
+
+The CLI will prompt you for:
+1. Project name
+2. Release channel (Latest or Canary)
+3. Optional integrations (Tailwind, ESLint, VS Code)
+
+### With Project Name
+
+```bash
+npx @unsetsoft/cra@latest my-ryunix-app
+```
+
+### With Flags
+
+```bash
+npx @unsetsoft/cra@latest my-app --canary --tailwind --eslint --vscode
+```
+
+## Interactive Experience
+
+The CLI provides a guided setup process:
+
+<Steps>
+  <Step title="Project Name">
+    Enter the directory name for your new application.
+    
+    ```bash
+    ? Project name: my-ryunix-app
+    ```
+  </Step>
+  
+  <Step title="Release Channel">
+    Choose between **Latest** (stable) or **Canary** (cutting-edge features).
+    
+    ```bash
+    ? Select release channel:
+    ❯ Latest (stable)
+      Canary (experimental)
+    ```
+  </Step>
+  
+  <Step title="Tailwind CSS">
+    Optional automatic initialization of Tailwind CSS.
+    
+    ```bash
+    ? Initialize Tailwind CSS? (y/N)
+    ```
+  </Step>
+  
+  <Step title="ESLint">
+    Pre-configured linting rules optimized for Ryunix.
+    
+    ```bash
+    ? Initialize ESLint? (y/N)
+    ```
+  </Step>
+  
+  <Step title="VS Code Integration">
+    Automatic workspace settings for Ryunix VS Code Extension.
+    
+    ```bash
+    ? Add VS Code settings? (y/N)
+    ```
+  </Step>
+</Steps>
+
+## Command Line Flags
+
+### Version and Help
+
+| Flag | Description |
+| :--- | :--- |
+| `-v, --version` | Output the current version of the CLI |
+| `-h, --help` | Display help message with usage instructions |
+
+**Example:**
+```bash
+npx @unsetsoft/cra@latest --version
+# Output: 1.1.20-canary.4
+```
+
+### Release Channel
+
+| Flag | Description |
+| :--- | :--- |
+| `--canary` | Use Canary channel for Ryunix dependencies |
+| `--latest` | Use Latest channel (default) |
+
+**Example:**
+```bash
+npx @unsetsoft/cra@latest my-app --canary
+```
+
+<Note>
+Canary releases include experimental features and may have breaking changes. Recommended for testing new features or contributing to development.
+</Note>
+
+### Optional Integrations
+
+| Flag | Description |
+| :--- | :--- |
+| `--tailwind` | Initialize with Tailwind CSS configuration |
+| `--eslint` | Initialize with ESLint configuration |
+| `--vscode` | Add VS Code settings for Ryunix extension |
+
+**Example:**
+```bash
+npx @unsetsoft/cra@latest my-app --tailwind --eslint
+```
+
+## Project Structure
+
+The CLI generates a complete project with the following structure:
+
+```
+my-ryunix-app/
+├── src/
+│   ├── app/
+│   │   └── App.ryx          # Main application component
+│   ├── components/          # Reusable components
+│   └── index.js             # Application entry point
+├── public/
+│   ├── index.html           # HTML template
+│   └── favicon.ico          # Default favicon
+├── .gitignore               # Git ignore rules
+├── package.json             # Dependencies and scripts
+├── ryunix.config.js         # Ryunix configuration
+└── README.md                # Project documentation
+```
+
+### With Optional Integrations
+
+#### Tailwind CSS
+
+```
+├── tailwind.config.js       # Tailwind configuration
+├── postcss.config.js        # PostCSS configuration
+└── src/
+    └── styles/
+        └── globals.css      # Global styles with Tailwind
+```
+
+#### ESLint
+
+```
+├── .eslintrc.js             # ESLint configuration
+└── .eslintignore            # ESLint ignore rules
+```
+
+#### VS Code
+
+```
+├── .vscode/
+│   └── settings.json        # VS Code workspace settings
+│   └── extensions.json      # Recommended extensions
+```
+
+## Generated Configuration
+
+### package.json
+
+```json
+{
+  "name": "my-ryunix-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ryunix dev",
+    "build": "ryunix build",
+    "start": "ryunix dev"
+  },
+  "dependencies": {
+    "@unsetsoft/ryunixjs": "^1.2.4",
+    "@unsetsoft/ryunix-presets": "^1.0.26"
+  }
+}
+```
+
+### ryunix.config.js
+
+```javascript
+module.exports = {
+  ssr: true,
+  mdx: false,
+  rootDir: 'src',
+  buildDir: '.ryunix',
+  port: 3000,
+  favicon: true
+}
+```
+
+### Tailwind Configuration
+
+When `--tailwind` is used:
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  content: [
+    './src/**/*.{js,jsx,ryx}',
+    './public/index.html'
+  ],
+  theme: {
+    extend: {}
+  },
+  plugins: []
+}
+```
+
+```javascript
+// postcss.config.js
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {}
+  }
+}
+```
+
+### ESLint Configuration
+
+When `--eslint` is used:
+
+```javascript
+// .eslintrc.js
+module.exports = {
+  extends: ['eslint:recommended'],
+  parser: '@babel/eslint-parser',
+  env: {
+    browser: true,
+    es2021: true,
+    node: true
+  },
+  rules: {
+    'no-console': 'warn',
+    'no-unused-vars': 'error'
+  }
+}
+```
+
+## What's Inside?
+
+Every project scaffolded with CRA includes:
+
+<CardGroup cols={2}>
+  <Card title="Webpack-Based Build" icon="wrench">
+    Optimized bundling with code splitting and HMR
+  </Card>
+  <Card title="SSR Ready" icon="server">
+    Server-Side Rendering configured out of the box
+  </Card>
+  <Card title="Development Server" icon="laptop-code">
+    Fast dev server with hot reload on port 3000
+  </Card>
+  <Card title="Production Optimized" icon="gauge">
+    Minification, tree-shaking, and asset optimization
+  </Card>
+</CardGroup>
+
+### Key Features
+
+- **Hot Module Replacement**: Instant updates without losing state
+- **Modern JavaScript**: ES6+ support with Babel transpilation
+- **CSS Support**: Built-in support for CSS, SASS, and PostCSS
+- **Asset Handling**: Automatic optimization for images and fonts
+- **Environment Variables**: Easy configuration with `.env` files
+- **Error Overlay**: Visual error display during development
+
+## Usage Examples
+
+### Create with All Features
+
+```bash
+npx @unsetsoft/cra@latest my-full-app \
+  --canary \
+  --tailwind \
+  --eslint \
+  --vscode
+```
+
+### Create Minimal Project
+
+```bash
+npx @unsetsoft/cra@latest my-minimal-app --latest
+```
+
+### Create for Production
+
+```bash
+npx @unsetsoft/cra@latest my-production-app \
+  --latest \
+  --eslint
+```
+
+## After Creation
+
+Once your project is created:
+
+<Steps>
+  <Step title="Navigate to Directory">
+    ```bash
+    cd my-ryunix-app
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    The CLI automatically runs npm install, but you can run it manually:
+    ```bash
+    npm install
+    ```
+  </Step>
+  
+  <Step title="Start Development Server">
+    ```bash
+    npm run dev
+    ```
+    
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
+  </Step>
+  
+  <Step title="Start Building">
+    Edit `src/app/App.ryx` and see your changes live!
+  </Step>
+</Steps>
+
+## Available Scripts
+
+The generated project includes these npm scripts:
+
+### `npm run dev`
+
+Starts the development server with hot reload.
+
+```bash
+npm run dev
+```
+
+- Opens [http://localhost:3000](http://localhost:3000)
+- Hot Module Replacement enabled
+- Error overlay for debugging
+- Fast refresh on file changes
+
+### `npm run build`
+
+Builds the app for production.
+
+```bash
+npm run build
+```
+
+- Optimized production build
+- Minified JavaScript and CSS
+- Source maps for debugging
+- Output to `.ryunix/` directory
+
+### `npm start`
+
+Alias for `npm run dev`.
+
+```bash
+npm start
+```
+
+## Package Manager Support
+
+The CLI automatically detects your package manager:
+
+- **npm**: Default package manager
+- **yarn**: Detected if `yarn.lock` exists
+- **pnpm**: Detected if `pnpm-lock.yaml` exists
+
+<Tip>
+The CLI respects your existing lock files and uses the appropriate package manager automatically.
+</Tip>
+
+## Dependencies
+
+The CLI uses these dependencies internally:
+
+| Package | Version | Purpose |
+| :--- | :--- | :--- |
+| `commander` | ^14.0.3 | CLI framework |
+| `prompts` | ^2.4.2 | Interactive prompts |
+| `picocolors` | ^1.1.1 | Terminal colors |
+| `cross-spawn` | ^7.0.6 | Cross-platform process spawning |
+| `command-exists-promise` | 2.0.2 | Check if commands exist |
+
+## Template System
+
+Templates are stored in the `templates/Webpack/` directory:
+
+```
+templates/
+└── Webpack/
+    ├── package.json         # Base dependencies
+    ├── ryunix.config.js     # Default configuration
+    ├── src/
+    │   ├── index.js
+    │   └── app/
+    │       └── App.ryx
+    └── public/
+        └── index.html
+```
+
+### Custom Templates
+
+You can create custom templates by:
+
+1. Forking the repository
+2. Modifying `templates/Webpack/`
+3. Using the local version:
+
+```bash
+node /path/to/cra/src/cli.js my-app
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+If port 3000 is busy, specify a different port:
+
+```bash
+# Edit ryunix.config.js
+module.exports = {
+  port: 3001
+}
+```
+
+### Installation Fails
+
+Ensure you're using a supported Node.js version:
+
+```bash
+node --version
+# Should be 20.x, 22.x, or 24.x
+```
+
+### Permission Errors
+
+On Linux/Mac, you might need to fix npm permissions:
+
+```bash
+sudo chown -R $(whoami) ~/.npm
+```
+
+### Network Issues
+
+If installation is slow, try a different registry:
+
+```bash
+npm config set registry https://registry.npmjs.org/
+```
+
+## Comparison with Other Tools
+
+### vs. Create React App
+
+| Feature | CRA (Ryunix) | Create React App |
+| :--- | :--- | :--- |
+| Framework | RyunixJS | React |
+| SSR | Built-in | Requires Next.js |
+| Bundle Size | Smaller | Larger |
+| Configuration | Extensible | Ejection required |
+| MDX Support | Native | Plugin required |
+
+### vs. Vite
+
+| Feature | CRA (Ryunix) | Vite |
+| :--- | :--- | :--- |
+| Build Tool | Webpack | Rollup/esbuild |
+| Dev Server | Webpack Dev Server | Vite Dev Server |
+| SSR | Integrated | Manual setup |
+| Template System | Opinionated | Flexible |
+
+## Advanced Usage
+
+### Programmatic API
+
+You can use CRA programmatically:
+
+```javascript
+const { exec } = require('child_process')
+const path = require('path')
+
+const projectName = 'my-app'
+const cliPath = require.resolve('@unsetsoft/cra')
+
+exec(`node ${cliPath} ${projectName} --canary`, (error, stdout) => {
+  if (error) {
+    console.error('Error creating app:', error)
+    return
+  }
+  console.log(stdout)
+})
+```
+
+### Environment Variables
+
+Configure behavior with environment variables:
+
+```bash
+# Skip prompts (use defaults)
+CRA_SKIP_PROMPTS=true npx @unsetsoft/cra@latest my-app
+
+# Custom template path
+CRA_TEMPLATE_PATH=/path/to/template npx @unsetsoft/cra@latest my-app
+```
+
+## Contributing
+
+To contribute to the CRA package:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/UnSetSoft/Ryunixjs.git
+   cd Ryunixjs/packages/cra
+   ```
+
+2. Make changes to templates or CLI logic
+
+3. Test locally:
+   ```bash
+   npm run dev
+   ```
+
+4. Submit a pull request
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/packages/ryunix-presets">
+    Learn about build configuration options
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/core/components">
+    Understand RyunixJS fundamentals
+  </Card>
+</CardGroup>

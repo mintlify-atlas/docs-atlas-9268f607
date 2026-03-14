@@ -1,0 +1,633 @@
+---
+title: Routing, SSR & SSG
+description: File-system routing, Server-Side Rendering, and Static Site Generation powered by Webpack plugins
+---
+
+Ryunix uses powerful custom Webpack plugins to generate optimized routing configurations at compile time by analyzing your file system structure.
+
+## File-System Routing
+
+Ryunix scans your `/app` directory to automatically generate routing configurations without manual route definitions.
+
+### AppRouterPlugin
+
+The `AppRouterPlugin` scans the `/app` directory and constructs a nested routing tree:
+
+```javascript webpack.config.mjs
+new AppRouterPlugin({
+  appDir: './app',
+  outputPath: '.ryunix/server/app/app-router.js',
+  ssgOutputPath: '.ryunix/cache/ssg/routes.json',
+  debug: false
+})
+```
+
+**Generated Files:**
+
+- **Client**: `.ryunix/server/app/app-router.js` - Lazy-loaded component proxies
+- **Server**: `.ryunix/server/app/app-router-server.js` - Direct component references for SSR
+
+### Directory Structure to Routes
+
+<CodeGroup>
+```bash File Structure
+app/
+├── layout.ryx
+├── index.ryx
+├── about/
+│   └── index.ryx
+├── blog/
+│   ├── layout.ryx
+│   ├── index.ryx
+│   └── [slug]/
+│       ├── index.ryx
+│       └── loading.ryx
+└── error.ryx
+```
+
+```javascript Generated Routes
+[
+  {
+    path: '/',
+    component: './app/index.ryx',
+    layout: './app/layout.ryx',
+    error: './app/error.ryx',
+  },
+  {
+    path: '/about',
+    component: './app/about/index.ryx',
+    layout: './app/layout.ryx',
+  },
+  {
+    path: '/blog',
+    component: './app/blog/index.ryx',
+    layout: './app/blog/layout.ryx',
+  },
+  {
+    path: '/blog/:slug',
+    component: './app/blog/[slug]/index.ryx',
+    layout: './app/blog/layout.ryx',
+    loading: './app/blog/[slug]/loading.ryx',
+  },
+]
+```
+</CodeGroup>
+
+### Special Files
+
+Ryunix recognizes these special filenames in each route directory:
+
+<CardGroup cols={2}>
+  <Card title="index.ryx" icon="file">
+    The main page component rendered at the route path
+  </Card>
+  <Card title="layout.ryx" icon="layer-group">
+    Wraps child routes with shared UI (navigation, sidebars)
+  </Card>
+  <Card title="loading.ryx" icon="spinner">
+    Fallback UI shown during async component loading
+  </Card>
+  <Card title="error.ryx" icon="triangle-exclamation">
+    Error boundary UI for route-level error handling
+  </Card>
+</CardGroup>
+
+## Component Detection
+
+The AppRouterPlugin automatically determines if components are Server or Client Components:
+
+### Server Component Auto-Detection
+
+A component is treated as a **Server Component** if:
+
+1. Filename ends with `.server.ryx` or `.server.js`
+2. Contains `// @server` directive at the top
+3. Exports an async default function:
+
+```javascript app/dashboard/index.ryx
+// @server
+export default async function DashboardPage() {
+  const data = await fetchDashboardData()
+  return <Dashboard data={data} />
+}
+```
+
+**AST Detection Pattern:**
+
+```javascript appRouterPlugin.mjs:68
+const isAsync = (filePath) => {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return /export\s+async\s+default\s+function/i.test(content) ||
+    /export\s+default\s+async\s+function/i.test(content) ||
+    /async\s+function\s+([A-Z][\w]*)/.test(content);
+};
+```
+
+### Client Component Auto-Detection
+
+A component is treated as a **Client Component** if:
+
+1. Filename ends with `.client.ryx` or `.client.js`
+2. Contains `// @client` directive
+3. Uses React hooks (detected via regex):
+
+```javascript ryunix-rsc-loader.mjs:8
+const hasHooks = /use(Store|Effect|LayoutEffect|Context|Ref|Memo|Id|Transition)/.test(content);
+```
+
+**Example:**
+
+```javascript app/components/Counter.client.ryx
+import { useStore } from '@unsetsoft/ryunixjs'
+
+export default function Counter() {
+  const [count, setCount] = useStore(0)
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+<Note>
+Components without explicit directives or hooks are treated as Server Components by default for optimal performance.
+</Note>
+
+### Directive Syntax
+
+Both single-line and multi-line comments are supported:
+
+```javascript Valid Directives
+// @server
+//@server
+//    @server
+
+// @client
+//@client
+```
+
+**Detection Regex:**
+
+```javascript appRouterPlugin.mjs:92
+let isServer = base.endsWith('.server') || /^\s*\/\/\s*@server/im.test(content);
+let isClient = base.endsWith('.client') || /^\s*\/\/\s*@client/im.test(content);
+```
+
+## Metadata Aggregation
+
+Ryunix merges metadata from parent layouts down to child pages for SEO:
+
+### Static Metadata
+
+```javascript app/layout.ryx
+export const Metatags = {
+  title: 'My App',
+  description: 'Welcome to my app',
+  openGraph: {
+    type: 'website',
+  },
+}
+
+export default function RootLayout({ children }) {
+  return <div>{children}</div>
+}
+```
+
+### Dynamic Metadata
+
+```javascript app/blog/[slug]/index.ryx
+export async function generateMetadata({ params }) {
+  const post = await fetchPost(params.slug)
+  return {
+    title: post.title,
+    description: post.excerpt,
+    openGraph: {
+      title: post.title,
+      images: [post.coverImage],
+    },
+  }
+}
+
+export default function BlogPost({ params }) {
+  // Component implementation
+}
+```
+
+**Metadata Hierarchy:**
+
+<Steps>
+  <Step title="Root Layout">
+    Base metadata from `app/layout.ryx` (site-wide defaults)
+  </Step>
+  <Step title="Nested Layouts">
+    Section-specific metadata from `app/blog/layout.ryx`
+  </Step>
+  <Step title="Page Metadata">
+    Page-specific metadata from `app/blog/[slug]/index.ryx`
+  </Step>
+</Steps>
+
+Child metadata **overrides** parent metadata for the same keys.
+
+## API Routing
+
+The `ApiRouterPlugin` scans `/app/api` for backend endpoints:
+
+```javascript webpack.config.mjs
+new ApiRouterPlugin({
+  appDir: './app',
+  outputPath: '.ryunix/server/api',
+  debug: false
+})
+```
+
+### API File Patterns
+
+Recognized filenames (case-sensitive):
+
+- `route.js` / `route.mjs`
+- `router.js` / `router.mjs`  
+- `endpoint.js` / `endpoint.mjs`
+
+### API File Structure
+
+```bash app/api/
+api/
+├── users/
+│   └── route.js          # /api/users
+├── posts/
+│   ├── route.js          # /api/posts
+│   └── [id]/
+│       └── route.js      # /api/posts/:id
+└── auth/
+    └── login/
+        └── endpoint.js   # /api/auth/login
+```
+
+### API Handler Example
+
+```javascript app/api/users/route.js
+export async function GET(req, res) {
+  const users = await db.users.findMany()
+  return res.json({ users })
+}
+
+export async function POST(req, res) {
+  const { name, email } = req.body
+  const user = await db.users.create({ name, email })
+  return res.json({ user }, { status: 201 })
+}
+```
+
+**Supported Methods:**
+
+- `GET`
+- `POST`
+- `PUT`
+- `PATCH`
+- `DELETE`
+
+<Tip>
+Export HTTP method names as async functions. The plugin automatically maps them to request handlers.
+</Tip>
+
+## Server-Side Rendering (SSR)
+
+SSR is enabled via `ryunix.config.js`:
+
+```javascript ryunix.config.js
+export default {
+  ssr: true,
+}
+```
+
+When enabled, Ryunix uses dual-compiler mode to generate both client and server bundles.
+
+### Development SSR
+
+In development mode, the `ssrDevHandler` middleware intercepts HTML requests:
+
+```javascript webpack.config.mjs:443
+devServer.app.use(async (req, res, next) => {
+  if (config.ssr) {
+    const handled = await renderDevRoute(req, res, devServer, dir, config)
+    if (handled) return
+  }
+  next()
+})
+```
+
+**SSR Flow:**
+
+<Steps>
+  <Step title="Intercept HTML Requests">
+    Captures `GET` requests with `Accept: text/html` header
+  </Step>
+  <Step title="Load Server Bundle">
+    Dynamically imports `.ryunix/server/app-router-server.bundle.mjs`
+  </Step>
+  <Step title="Mock Globals">
+    Sets `global.window.location.pathname` and `global.document` for SSR context
+  </Step>
+  <Step title="Render to String">
+    Executes `Ryunix.renderToString()` or `Ryunix.renderToReadableStream()`
+  </Step>
+  <Step title="Inject HTML">
+    Replaces `<div id="root"></div>` with rendered markup
+  </Step>
+  <Step title="Add CSS Links">
+    Injects development CSS `<link>` tags into `<head>`
+  </Step>
+</Steps>
+
+**SSR Handler Implementation:**
+
+```javascript ssrDevHandler.mjs:59
+if (AppRouterApp && ryunixRenderToString && ryunixCreateElement) {
+  global.window = { location: { pathname: req.url } }
+  const element = ryunixCreateElement(AppRouterApp)
+  
+  if (typeof global.Ryunix?.renderToReadableStream === 'function') {
+    const stream = global.Ryunix.renderToReadableStream(element);
+    const reader = stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      renderedString += new TextDecoder().decode(value);
+    }
+  } else {
+    renderedString = ryunixRenderToString(element)
+  }
+}
+```
+
+### Production SSR
+
+Production SSR is handled by the standalone Node.js server in `bin/prod.server.mjs`.
+
+<Note>
+See [CLI and Server](/webpack/cli-and-server) for production server details.
+</Note>
+
+## Static Site Generation (SSG)
+
+SSG prerenders routes as static HTML files during the build process.
+
+### Enabling SSG
+
+Configure prerendering in `ryunix.config.js`:
+
+```javascript ryunix.config.js
+export default {
+  webpack: {
+    production: true,
+  },
+  legacy: {
+    ssg: {
+      prerender: [
+        '/',
+        '/about',
+        '/blog',
+      ],
+    },
+  },
+}
+```
+
+### RyunixRoutesPlugin
+
+The `RyunixRoutesPlugin` orchestrates SSG:
+
+```javascript webpack.config.mjs
+new RyunixRoutesPlugin({
+  routesPath: './pages/routes.ryx',
+  outputPath: '.ryunix/cache/ssg/routes.json',
+  debug: false
+})
+```
+
+### Prerendering Process
+
+Triggered automatically after production build:
+
+<Steps>
+  <Step title="Extract Routes">
+    Reads compiled `app-router-server.bundle.mjs` and `routes.json`
+  </Step>
+  <Step title="Parse Frontmatter">
+    Extracts metadata from MDX files for dynamic properties
+  </Step>
+  <Step title="Evaluate Templates">
+    Processes dynamic routes like `/docs/${slug}` against data
+  </Step>
+  <Step title="Render HTML">
+    Loads server bundle and executes `renderToString()` for each route
+  </Step>
+  <Step title="Inject Metadata">
+    Adds `<meta>`, `<title>`, `<link rel="canonical">` tags to HTML
+  </Step>
+  <Step title="Write Files">
+    Saves HTML to `.ryunix/static/[route]/index.html`
+  </Step>
+</Steps>
+
+**Prerender Script:**
+
+```bash Terminal
+ryunix build
+```
+
+**Console Output:**
+
+```bash
+✔ Compilation successful! 🎉
+○ Prerendering routes...
+  ✔ / (125ms)
+  ✔ /about (89ms)
+  ✔ /blog (102ms)
+✔ Prerendering complete (3 routes in 316ms)
+```
+
+### SEO Manifest Generation
+
+SSG automatically generates SEO files:
+
+#### Sitemap.xml
+
+```xml .ryunix/static/sitemap.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://example.com/</loc>
+    <lastmod>2026-03-14</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://example.com/about</loc>
+    <lastmod>2026-03-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>
+```
+
+#### Robots.txt
+
+```txt .ryunix/static/robots.txt
+User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+```
+
+<Tip>
+Configure SEO metadata in route components using `generateMetadata()` or `Metatags` exports to control sitemap properties.
+</Tip>
+
+### MDX Frontmatter Support
+
+Extract metadata from MDX files:
+
+```mdx app/blog/hello-world/index.mdx
+---
+title: Hello World
+date: 2026-03-14
+author: John Doe
+description: My first blog post
+---
+
+# Hello World
+
+Welcome to my blog!
+```
+
+Access frontmatter in prerendering:
+
+```javascript
+export async function generateMetadata({ frontmatter }) {
+  return {
+    title: frontmatter.title,
+    description: frontmatter.description,
+  }
+}
+```
+
+## Isomorphic Routing
+
+Ryunix generates **dual routing configurations**:
+
+### Client Router (Lazy Loading)
+
+```javascript .ryunix/server/app/app-router.js
+import { lazy } from '@unsetsoft/ryunixjs'
+
+export default [
+  {
+    path: '/',
+    component: lazy(() => import('./app/index.ryx')),
+  },
+  {
+    path: '/blog/:slug',
+    component: lazy(() => import('./app/blog/[slug]/index.ryx')),
+    loading: lazy(() => import('./app/blog/[slug]/loading.ryx')),
+  },
+]
+```
+
+### Server Router (Direct References)
+
+```javascript .ryunix/server/app/app-router-server.js
+import HomePage from '../../app/index.ryx'
+import BlogPost from '../../app/blog/[slug]/index.ryx'
+
+export default [
+  {
+    path: '/',
+    component: HomePage,
+  },
+  {
+    path: '/blog/:slug',
+    component: BlogPost,
+  },
+]
+```
+
+<Warning>
+Do not manually edit generated router files. They are overwritten on each compilation.
+</Warning>
+
+## Boundaries
+
+Ryunix automatically wraps routes with boundaries:
+
+### Error Boundary
+
+Generated from `error.ryx`:
+
+```javascript app/error.ryx
+export default function ErrorBoundary({ error }) {
+  return (
+    <div>
+      <h1>Something went wrong</h1>
+      <pre>{error.message}</pre>
+    </div>
+  )
+}
+```
+
+Mapped in router as:
+
+```javascript
+<ErrorBoundary fallback={ErrorComponent}>
+  <Route />
+</ErrorBoundary>
+```
+
+### Suspense Boundary
+
+Generated from `loading.ryx`:
+
+```javascript app/blog/[slug]/loading.ryx
+export default function LoadingFallback() {
+  return <div>Loading post...</div>
+}
+```
+
+Mapped in router as:
+
+```javascript
+<Suspense fallback={<LoadingFallback />}>
+  <Route />
+</Suspense>
+```
+
+## Dynamic Routes
+
+Dynamic segments use bracket syntax:
+
+```bash
+app/blog/[slug]/index.ryx     → /blog/:slug
+app/docs/[...path]/index.ryx  → /docs/*path (catch-all)
+```
+
+**Access Parameters:**
+
+```javascript app/blog/[slug]/index.ryx
+export default function BlogPost({ params }) {
+  const { slug } = params
+  return <h1>Post: {slug}</h1>
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Webpack Configuration" icon="gear" href="/webpack/configuration">
+    Core Webpack setup and compiler architecture
+  </Card>
+  <Card title="Server Actions" icon="bolt" href="/webpack/server-actions">
+    RPC functions that bridge client and server
+  </Card>
+</CardGroup>

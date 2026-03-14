@@ -1,0 +1,176 @@
+---
+title: 'Fragment'
+description: 'Group multiple children without adding extra nodes to the DOM'
+icon: 'layer-group'
+---
+
+## Overview
+
+`Fragment` allows you to group multiple children elements without adding an extra wrapper node to the DOM. This is useful when you need to return multiple elements from a component but don't want to introduce unnecessary DOM nodes.
+
+## Import
+
+```javascript
+import { Fragment } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+const Fragment = (props) => {
+  const children = Array.isArray(props.children)
+    ? props.children
+    : [props.children]
+  return createElement(RYUNIX_TYPES.RYUNIX_FRAGMENT, {}, ...children)
+}
+```
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { Fragment } from 'ryunix'
+
+const MyComponent = () => {
+  return (
+    <Fragment>
+      <h1>Title</h1>
+      <p>Description</p>
+      <button>Click me</button>
+    </Fragment>
+  )
+}
+```
+
+```jsx JSX Shorthand
+// Using the shorthand <> </> syntax
+const MyComponent = () => {
+  return (
+    <>
+      <h1>Title</h1>
+      <p>Description</p>
+      <button>Click me</button>
+    </>
+  )
+}
+```
+
+```jsx Returning Multiple Elements
+const TableRow = ({ data }) => {
+  return (
+    <Fragment>
+      <td>{data.name}</td>
+      <td>{data.email}</td>
+      <td>{data.role}</td>
+    </Fragment>
+  )
+}
+```
+
+```jsx Conditional Rendering
+const UserInfo = ({ user, showDetails }) => {
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      {showDetails && (
+        <Fragment>
+          <p>Email: {user.email}</p>
+          <p>Role: {user.role}</p>
+          <p>Department: {user.department}</p>
+        </Fragment>
+      )}
+    </div>
+  )
+}
+```
+
+</CodeGroup>
+
+## Props
+
+<ParamField path="children" type="ReactNode" required>
+  The child elements to render. Can be a single element or an array of elements.
+</ParamField>
+
+## Behavior
+
+### DOM Output
+
+`Fragment` does not create any DOM element. The children are rendered directly into the parent container:
+
+```jsx
+// Input
+<div>
+  <Fragment>
+    <span>A</span>
+    <span>B</span>
+  </Fragment>
+</div>
+
+// Rendered DOM
+<div>
+  <span>A</span>
+  <span>B</span>
+</div>
+```
+
+### Children Normalization
+
+The Fragment automatically normalizes children:
+- Converts non-array children to an array
+- Filters out `null`, `undefined`, `false`, and `true` values
+- Handles nested arrays via `.flat()`
+
+## Common Patterns
+
+### List Rendering
+
+```jsx
+const UserList = ({ users }) => {
+  return (
+    <>
+      {users.map(user => (
+        <Fragment key={user.id}>
+          <div className="user-card">
+            <h3>{user.name}</h3>
+            <p>{user.email}</p>
+          </div>
+        </Fragment>
+      ))}
+    </>
+  )
+}
+```
+
+### Component Composition
+
+```jsx
+const Layout = ({ header, content, footer }) => {
+  return (
+    <>
+      {header && <header>{header}</header>}
+      <main>{content}</main>
+      {footer && <footer>{footer}</footer>}
+    </>
+  )
+}
+```
+
+## Notes
+
+<Note>
+  When mapping over arrays with Fragment, you should still provide a `key` prop to help RyunixJS identify elements.
+</Note>
+
+<Tip>
+  Use the shorthand syntax `<> </>` for cleaner code when you don't need to pass props.
+</Tip>
+
+## SSR Compatibility
+
+`Fragment` is fully compatible with server-side rendering. It renders children directly without creating wrapper elements in the HTML output.
+
+## Related
+
+- [createElement](/api/createElement)

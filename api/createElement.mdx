@@ -1,0 +1,420 @@
+---
+title: 'createElement'
+description: 'Core API for creating virtual DOM elements in RyunixJS'
+icon: 'code'
+---
+
+## createElement
+
+Creates a virtual DOM element with the specified type, properties, and children. This is the fundamental building block of RyunixJS applications.
+
+### Signature
+
+```javascript
+function createElement(type, props, ...children): RyunixElement
+```
+
+<ParamField path="type" type="string | Function" required>
+  The element type. Can be:
+  - A string for HTML elements (e.g., `'div'`, `'span'`, `'button'`)
+  - A function component
+  - A class component
+</ParamField>
+
+<ParamField path="props" type="object">
+  Properties and attributes for the element. Can include:
+  - HTML attributes (e.g., `id`, `className`, `style`)
+  - Event handlers (e.g., `onClick`, `onChange`)
+  - Custom props for components
+  - Special props like `key` and `ref`
+  
+  Defaults to `{}` if not provided.
+</ParamField>
+
+<ParamField path="children" type="...any">
+  Child elements or content. Can be:
+  - Strings or numbers (rendered as text)
+  - Other RyunixElements
+  - Arrays of elements
+  - `null`, `undefined`, `false`, or `true` (ignored)
+  
+  Children are automatically flattened and normalized.
+</ParamField>
+
+### Returns
+
+<ResponseField name="RyunixElement" type="object">
+  A virtual DOM element object with the following structure:
+  
+  ```javascript
+  {
+    type: string | Function,
+    props: {
+      ...props,
+      children: Array<RyunixElement>
+    }
+  }
+  ```
+</ResponseField>
+
+### Usage Examples
+
+#### Basic HTML Elements
+
+```javascript
+import { createElement } from '@ryunixjs/core'
+
+// Simple div
+const element = createElement('div', { className: 'container' }, 'Hello World')
+
+// Nested elements
+const nested = createElement(
+  'div',
+  { className: 'parent' },
+  createElement('h1', null, 'Title'),
+  createElement('p', null, 'Content')
+)
+```
+
+#### With JSX
+
+```jsx
+// JSX is transformed to createElement calls
+const element = <div className="container">Hello World</div>
+
+// Transpiles to:
+const element = createElement('div', { className: 'container' }, 'Hello World')
+```
+
+#### Function Components
+
+```javascript
+function Greeting({ name }) {
+  return createElement('h1', null, `Hello, ${name}!`)
+}
+
+const app = createElement(Greeting, { name: 'Alice' })
+```
+
+#### With Children Prop
+
+```javascript
+// Children can be passed as a prop
+const element = createElement('div', {
+  className: 'wrapper',
+  children: ['Hello', createElement('span', null, 'World')]
+})
+
+// Or as rest arguments (recommended)
+const element2 = createElement(
+  'div',
+  { className: 'wrapper' },
+  'Hello',
+  createElement('span', null, 'World')
+)
+```
+
+### Child Normalization
+
+`createElement` automatically normalizes children:
+
+```javascript
+// Falsy values are filtered out
+createElement('div', null, null, false, true, undefined)
+// Results in: <div></div>
+
+// Arrays are flattened
+createElement('div', null, ['a', ['b', 'c']], 'd')
+// Results in: <div>abcd</div>
+
+// Adjacent text nodes are merged
+createElement('div', null, 'Hello', ' ', 'World')
+// Results in: <div>Hello World</div>
+```
+
+<Note>
+  Text nodes are automatically created for primitive values (strings, numbers). The internal `createTextElement` function wraps them in a `TEXT_ELEMENT` type with a `nodeValue` prop.
+</Note>
+
+---
+
+## Fragment
+
+A special component that allows grouping multiple children without adding extra nodes to the DOM.
+
+### Signature
+
+```javascript
+function Fragment(props): RyunixElement
+```
+
+<ParamField path="props" type="object">
+  An object containing:
+  - `children`: The child elements to render
+</ParamField>
+
+### Returns
+
+<ResponseField name="RyunixElement" type="object">
+  A fragment element with type `RYUNIX_FRAGMENT` that renders only its children.
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Fragment
+
+```javascript
+import { Fragment, createElement } from '@ryunixjs/core'
+
+const list = createElement(
+  Fragment,
+  {},
+  createElement('li', null, 'Item 1'),
+  createElement('li', null, 'Item 2'),
+  createElement('li', null, 'Item 3')
+)
+```
+
+#### With JSX Shorthand
+
+```jsx
+// Using Fragment component
+import { Fragment } from '@ryunixjs/core'
+
+function List() {
+  return (
+    <Fragment>
+      <li>Item 1</li>
+      <li>Item 2</li>
+      <li>Item 3</li>
+    </Fragment>
+  )
+}
+
+// Using shorthand syntax
+function List() {
+  return (
+    <>
+      <li>Item 1</li>
+      <li>Item 2</li>
+      <li>Item 3</li>
+    </>
+  )
+}
+```
+
+#### Returning Multiple Elements
+
+```jsx
+function TableRow() {
+  return (
+    <>
+      <td>Name</td>
+      <td>Age</td>
+      <td>Email</td>
+    </>
+  )
+}
+```
+
+<Tip>
+  Fragments are useful when you need to return multiple elements from a component without wrapping them in an unnecessary div or span.
+</Tip>
+
+---
+
+## cloneElement
+
+Clones an element and returns a new element with updated props and/or children.
+
+### Signature
+
+```javascript
+function cloneElement(element, props = {}, ...children): RyunixElement
+```
+
+<ParamField path="element" type="RyunixElement" required>
+  The element to clone. Must be a valid RyunixElement object.
+</ParamField>
+
+<ParamField path="props" type="object">
+  Additional props to merge with the original element's props. These props will override the original props.
+</ParamField>
+
+<ParamField path="children" type="...any">
+  New children to replace the original children. If not provided, the original children are preserved.
+</ParamField>
+
+### Returns
+
+<ResponseField name="RyunixElement" type="object">
+  A new element with the same type as the original, merged props, and updated children.
+</ResponseField>
+
+### Usage Examples
+
+#### Override Props
+
+```javascript
+import { createElement, cloneElement } from '@ryunixjs/core'
+
+const original = createElement('button', { className: 'btn', disabled: true }, 'Click')
+
+const cloned = cloneElement(original, { disabled: false })
+// Result: <button className="btn" disabled={false}>Click</button>
+```
+
+#### Replace Children
+
+```javascript
+const original = createElement('div', { className: 'wrapper' }, 'Old Content')
+
+const cloned = cloneElement(
+  original,
+  null,
+  createElement('span', null, 'New Content')
+)
+// Result: <div className="wrapper"><span>New Content</span></div>
+```
+
+#### Adding Event Handlers
+
+```jsx
+function enhanceButton(buttonElement) {
+  return cloneElement(buttonElement, {
+    onClick: (e) => {
+      console.log('Button clicked!')
+      // Call original onClick if it exists
+      buttonElement.props.onClick?.(e)
+    }
+  })
+}
+
+const button = <button>Click Me</button>
+const enhanced = enhanceButton(button)
+```
+
+<Warning>
+  `cloneElement` throws an error if the first argument is not a valid element object.
+</Warning>
+
+---
+
+## isValidElement
+
+Checks if an object is a valid RyunixElement.
+
+### Signature
+
+```javascript
+function isValidElement(object): boolean
+```
+
+<ParamField path="object" type="any" required>
+  The object to check.
+</ParamField>
+
+### Returns
+
+<ResponseField name="valid" type="boolean">
+  `true` if the object is a valid RyunixElement (has `type` and `props` properties), `false` otherwise.
+</ResponseField>
+
+### Usage Examples
+
+#### Type Checking
+
+```javascript
+import { createElement, isValidElement } from '@ryunixjs/core'
+
+const element = createElement('div', null, 'Hello')
+console.log(isValidElement(element)) // true
+
+const notElement = { foo: 'bar' }
+console.log(isValidElement(notElement)) // false
+
+console.log(isValidElement('string')) // false
+console.log(isValidElement(null)) // false
+console.log(isValidElement(undefined)) // false
+```
+
+#### Conditional Rendering
+
+```jsx
+function renderContent(content) {
+  if (isValidElement(content)) {
+    return content
+  }
+  
+  if (typeof content === 'string') {
+    return <span>{content}</span>
+  }
+  
+  return <div>Invalid content</div>
+}
+```
+
+#### Validating Children
+
+```jsx
+function Container({ children }) {
+  const validChildren = Array.isArray(children)
+    ? children.filter(isValidElement)
+    : isValidElement(children) ? [children] : []
+  
+  return (
+    <div className="container">
+      {validChildren.map((child, i) => (
+        <div key={i} className="item">
+          {child}
+        </div>
+      ))}
+    </div>
+  )
+}
+```
+
+---
+
+## Implementation Details
+
+### Text Element Creation
+
+Primitive values (strings and numbers) are automatically wrapped in text elements:
+
+```javascript
+// Internal representation
+{
+  type: Symbol.for('ryunix.text.element'),
+  props: {
+    nodeValue: 'text content',
+    children: []
+  }
+}
+```
+
+### Child Flattening
+
+Children are deeply flattened and normalized:
+
+1. Arrays are flattened using `.flat()`
+2. `null`, `undefined`, `false`, and `true` are filtered out
+3. Adjacent primitive values are merged into single text elements
+4. Objects are preserved as-is
+
+### Type System
+
+RyunixJS uses symbols for internal element types:
+
+```javascript
+// From utils/index.js
+const RYUNIX_TYPES = {
+  TEXT_ELEMENT: Symbol.for('ryunix.text.element'),
+  RYUNIX_FRAGMENT: Symbol.for('ryunix.fragment'),
+  // ... other types
+}
+```
+
+<Note>
+  The `createElement` function is compatible with JSX. Configure your JSX transpiler (Babel, SWC, esbuild) to use `createElement` as the pragma.
+</Note>

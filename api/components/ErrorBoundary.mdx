@@ -1,0 +1,347 @@
+---
+title: 'ErrorBoundary'
+description: 'Catch and handle JavaScript errors in component trees'
+icon: 'shield-exclamation'
+---
+
+## Overview
+
+`ErrorBoundary` is a native RyunixJS component that catches JavaScript errors anywhere in its child component tree, logs those errors, and displays a fallback UI instead of crashing the entire application. It integrates directly with the reconciler's `performUnitOfWork` loop.
+
+## Import
+
+```javascript
+import { ErrorBoundary } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+function ErrorBoundary({ children, fallback }) {
+  const state = getState()
+  
+  // If error caught, render fallback
+  if (state.wipFiber && state.wipFiber.stateError) {
+    if (typeof fallback === 'function') {
+      return fallback(state.wipFiber.stateError)
+    }
+    return fallback
+  }
+
+  // Otherwise render children normally
+  return createElement('ryunix-error-boundary-wrapper', 
+    { style: { display: 'contents' } }, 
+    children
+  )
+}
+```
+
+## Props
+
+<ParamField path="children" type="ReactNode" required>
+  The component tree to monitor for errors. Any error thrown within this tree will be caught by the boundary.
+</ParamField>
+
+<ParamField path="fallback" type="ReactNode | Function" required>
+  The UI to display when an error is caught. Can be:
+  - A static element: `<div>Something went wrong</div>`
+  - A function receiving the error: `(error) => <div>Error: {error.message}</div>`
+</ParamField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { ErrorBoundary } from 'ryunix'
+
+const App = () => {
+  return (
+    <ErrorBoundary fallback={<div>Something went wrong</div>}>
+      <MyComponent />
+    </ErrorBoundary>
+  )
+}
+```
+
+```jsx Function Fallback
+import { ErrorBoundary } from 'ryunix'
+
+const App = () => {
+  return (
+    <ErrorBoundary
+      fallback={(error) => (
+        <div className="error-container">
+          <h1>Oops! Something went wrong</h1>
+          <p>{error.message}</p>
+          <button onClick={() => window.location.reload()}>
+            Reload Page
+          </button>
+        </div>
+      )}
+    >
+      <MyComponent />
+    </ErrorBoundary>
+  )
+}
+```
+
+```jsx Nested Error Boundaries
+import { ErrorBoundary } from 'ryunix'
+
+const Dashboard = () => {
+  return (
+    <div>
+      <ErrorBoundary fallback={<div>Header failed to load</div>}>
+        <Header />
+      </ErrorBoundary>
+      
+      <ErrorBoundary fallback={<div>Sidebar failed to load</div>}>
+        <Sidebar />
+      </ErrorBoundary>
+      
+      <ErrorBoundary fallback={<div>Content failed to load</div>}>
+        <Content />
+      </ErrorBoundary>
+    </div>
+  )
+}
+```
+
+```jsx With Error Reporting
+import { ErrorBoundary } from 'ryunix'
+
+const reportError = (error) => {
+  // Send to error tracking service
+  console.error('Error caught:', error)
+  // analytics.trackError(error)
+}
+
+const App = () => {
+  return (
+    <ErrorBoundary
+      fallback={(error) => {
+        reportError(error)
+        return (
+          <div>
+            <h1>Error occurred</h1>
+            <p>{error.message}</p>
+          </div>
+        )
+      }}
+    >
+      <MyComponent />
+    </ErrorBoundary>
+  )
+}
+```
+
+```jsx Page-Level Protection
+import { ErrorBoundary } from 'ryunix'
+
+const ErrorFallback = ({ error }) => (
+  <div className="error-page">
+    <h1>Page Error</h1>
+    <p>We're sorry, but something went wrong.</p>
+    <details>
+      <summary>Error details</summary>
+      <pre>{error.stack}</pre>
+    </details>
+    <button onClick={() => window.history.back()}>Go Back</button>
+  </div>
+)
+
+const PageWrapper = ({ children }) => {
+  return (
+    <ErrorBoundary fallback={(error) => <ErrorFallback error={error} />}>
+      {children}
+    </ErrorBoundary>
+  )
+}
+```
+
+</CodeGroup>
+
+## Behavior
+
+### Error Detection
+
+The `ErrorBoundary` hooks directly into RyunixJS's reconciler loop. When an error occurs during rendering:
+
+1. The error is caught in `performUnitOfWork`
+2. The error is stored in `state.wipFiber.stateError`
+3. The boundary checks for this error and renders the fallback
+
+### Wrapper Element
+
+When no error is present, `ErrorBoundary` wraps children in a transparent container:
+
+```jsx
+<ryunix-error-boundary-wrapper style="display: contents">
+  {children}
+</ryunix-error-boundary-wrapper>
+```
+
+The `display: contents` style ensures the wrapper doesn't affect layout.
+
+### Internal Type
+
+The component is marked with a special type for reconciler recognition:
+
+```javascript
+ErrorBoundary.ryunix_type = 'RYUNIX_ERROR_BOUNDARY'
+```
+
+## Error Types
+
+`ErrorBoundary` catches errors during:
+
+- Component rendering
+- Lifecycle methods
+- Hook execution
+- Event handlers (if they throw during render)
+
+<Warning>
+  ErrorBoundary does NOT catch errors in:
+  - Event handlers (outside render)
+  - Asynchronous code (setTimeout, promises)
+  - Server-side rendering
+  - Errors thrown in the ErrorBoundary itself
+</Warning>
+
+## Advanced Patterns
+
+### Multiple Error Boundaries
+
+Use multiple boundaries for granular error isolation:
+
+```jsx
+const App = () => {
+  return (
+    <ErrorBoundary fallback={<AppError />}>
+      <Layout>
+        <ErrorBoundary fallback={<WidgetError />}>
+          <WidgetPanel />
+        </ErrorBoundary>
+        
+        <ErrorBoundary fallback={<ChartError />}>
+          <DataChart />
+        </ErrorBoundary>
+      </Layout>
+    </ErrorBoundary>
+  )
+}
+```
+
+### Error Recovery
+
+```jsx
+import { ErrorBoundary, useStore } from 'ryunix'
+
+const RecoverableComponent = () => {
+  const [hasError, setHasError] = useStore(false)
+  const [key, setKey] = useStore(0)
+  
+  const handleReset = () => {
+    setKey(k => k + 1)
+    setHasError(false)
+  }
+  
+  return (
+    <ErrorBoundary
+      key={key}
+      fallback={(error) => (
+        <div>
+          <p>Error: {error.message}</p>
+          <button onClick={handleReset}>Try Again</button>
+        </div>
+      )}
+    >
+      <MyComponent />
+    </ErrorBoundary>
+  )
+}
+```
+
+### Combining with Suspense
+
+```jsx
+import { ErrorBoundary, Suspense, lazy } from 'ryunix'
+
+const LazyComponent = lazy(() => import('./Component'))
+
+const App = () => {
+  return (
+    <ErrorBoundary
+      fallback={(error) => <div>Failed to load: {error.message}</div>}
+    >
+      <Suspense fallback={<div>Loading...</div>}>
+        <LazyComponent />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+### Development vs Production
+
+```jsx
+const isDev = process.env.NODE_ENV === 'development'
+
+const ErrorFallback = ({ error }) => {
+  if (isDev) {
+    return (
+      <div className="dev-error">
+        <h1>Development Error</h1>
+        <pre>{error.stack}</pre>
+      </div>
+    )
+  }
+  
+  return (
+    <div className="prod-error">
+      <h1>Something went wrong</h1>
+      <p>Please try refreshing the page</p>
+    </div>
+  )
+}
+
+const App = () => {
+  return (
+    <ErrorBoundary fallback={(error) => <ErrorFallback error={error} />}>
+      <MyApp />
+    </ErrorBoundary>
+  )
+}
+```
+
+## Best Practices
+
+<Tip>
+  Place ErrorBoundary components strategically at route or page boundaries to prevent entire app crashes while providing meaningful error messages.
+</Tip>
+
+<Tip>
+  Use function fallbacks to access error details and implement custom error logging or reporting.
+</Tip>
+
+<Note>
+  Always provide a way for users to recover from errors, such as a "Try Again" button or navigation links.
+</Note>
+
+## SSR Compatibility
+
+`ErrorBoundary` works with server-side rendering. Errors caught during SSR will render the fallback UI in the server-generated HTML.
+
+```jsx
+// Server-rendered error fallback
+<ryunix-error-boundary-wrapper style="display: contents">
+  <div>Error: Component failed to render</div>
+</ryunix-error-boundary-wrapper>
+```
+
+## Related
+
+- [Suspense](/api/components/Suspense)
+- [Error Boundaries Guide](/advanced/error-boundaries)
+- See the examples above for error handling patterns

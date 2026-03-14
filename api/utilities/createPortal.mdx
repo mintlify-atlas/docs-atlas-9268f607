@@ -1,0 +1,553 @@
+---
+title: 'createPortal'
+description: 'Render children into a different part of the DOM tree'
+icon: 'portal-enter'
+---
+
+## Overview
+
+`createPortal` enables rendering children into a DOM node that exists outside the parent component's DOM hierarchy. This is essential for modals, tooltips, dropdowns, and any UI that needs to break out of the normal DOM flow.
+
+## Import
+
+```javascript
+import { createPortal } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+const RYUNIX_PORTAL = Symbol.for('ryunix.portal')
+
+const createPortal = (children, container) => {
+  if (!container) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('createPortal: target container is not a DOM element.')
+    }
+    return null
+  }
+
+  return {
+    type: RYUNIX_PORTAL,
+    props: {
+      children: Array.isArray(children) ? children : [children],
+    },
+    containerInfo: container,
+    _isPortal: true,
+  }
+}
+```
+
+## Parameters
+
+<ParamField path="children" type="ReactNode" required>
+  The element(s) to render into the portal. Can be a single element or an array of elements.
+</ParamField>
+
+<ParamField path="container" type="HTMLElement" required>
+  The DOM element to render the children into. Must be a valid DOM node.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Portal" type="Object">
+  A portal element with type `RYUNIX_PORTAL`, containing the children and target container. Marked with `_isPortal = true`.
+</ResponseField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Modal
+import { createPortal, useStore } from 'ryunix'
+
+const Modal = ({ isOpen, onClose, children }) => {
+  if (!isOpen) return null
+  
+  return createPortal(
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+const App = () => {
+  const [isOpen, setIsOpen] = useStore(false)
+  
+  return (
+    <div>
+      <button onClick={() => setIsOpen(true)}>Open Modal</button>
+      
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)}>
+        <h2>Modal Title</h2>
+        <p>Modal content goes here</p>
+      </Modal>
+    </div>
+  )
+}
+```
+
+```jsx Tooltip Component
+import { createPortal, useRef, useStore, useEffect } from 'ryunix'
+
+const Tooltip = ({ text, children }) => {
+  const [isVisible, setIsVisible] = useStore(false)
+  const [position, setPosition] = useStore({ x: 0, y: 0 })
+  const triggerRef = useRef(null)
+  
+  const handleMouseEnter = (e) => {
+    const rect = e.target.getBoundingClientRect()
+    setPosition({ x: rect.left, y: rect.bottom + 5 })
+    setIsVisible(true)
+  }
+  
+  return (
+    <div>
+      <div 
+        ref={triggerRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setIsVisible(false)}
+      >
+        {children}
+      </div>
+      
+      {isVisible && createPortal(
+        <div 
+          className="tooltip"
+          style={{
+            position: 'absolute',
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+          }}
+        >
+          {text}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+const App = () => {
+  return (
+    <Tooltip text="This is a tooltip">
+      <button>Hover me</button>
+    </Tooltip>
+  )
+}
+```
+
+```jsx Dropdown Menu
+import { createPortal, useStore, useRef, useEffect } from 'ryunix'
+
+const Dropdown = ({ trigger, children }) => {
+  const [isOpen, setIsOpen] = useStore(false)
+  const [position, setPosition] = useStore({ x: 0, y: 0 })
+  const triggerRef = useRef(null)
+  
+  const handleToggle = () => {
+    if (!isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      setPosition({ x: rect.left, y: rect.bottom })
+    }
+    setIsOpen(!isOpen)
+  }
+  
+  return (
+    <div>
+      <div ref={triggerRef} onClick={handleToggle}>
+        {trigger}
+      </div>
+      
+      {isOpen && createPortal(
+        <div 
+          className="dropdown-menu"
+          style={{
+            position: 'absolute',
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+          }}
+        >
+          {children}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+const App = () => {
+  return (
+    <Dropdown trigger={<button>Menu</button>}>
+      <div className="menu-item">Profile</div>
+      <div className="menu-item">Settings</div>
+      <div className="menu-item">Logout</div>
+    </Dropdown>
+  )
+}
+```
+
+```jsx Notification System
+import { createPortal, useStore } from 'ryunix'
+
+const NotificationContainer = ({ notifications }) => {
+  if (notifications.length === 0) return null
+  
+  return createPortal(
+    <div className="notification-container">
+      {notifications.map(notification => (
+        <div key={notification.id} className="notification">
+          {notification.message}
+        </div>
+      ))}
+    </div>,
+    document.body
+  )
+}
+
+const App = () => {
+  const [notifications, setNotifications] = useStore([])
+  
+  const addNotification = (message) => {
+    const id = Date.now()
+    setNotifications(prev => [...prev, { id, message }])
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, 3000)
+  }
+  
+  return (
+    <div>
+      <button onClick={() => addNotification('Hello!')}>Show Notification</button>
+      <NotificationContainer notifications={notifications} />
+    </div>
+  )
+}
+```
+
+```jsx Custom Portal Root
+import { createPortal, useEffect } from 'ryunix'
+
+const Modal = ({ children }) => {
+  let modalRoot = document.getElementById('modal-root')
+  
+  if (!modalRoot) {
+    modalRoot = document.createElement('div')
+    modalRoot.id = 'modal-root'
+    document.body.appendChild(modalRoot)
+  }
+  
+  return createPortal(
+    <div className="modal">{children}</div>,
+    modalRoot
+  )
+}
+```
+
+</CodeGroup>
+
+## Portal Structure
+
+The portal object created has this structure:
+
+```javascript
+{
+  type: Symbol.for('ryunix.portal'),
+  props: {
+    children: [/* normalized children */]
+  },
+  containerInfo: HTMLElement,
+  _isPortal: true
+}
+```
+
+## Children Normalization
+
+Portals automatically normalize children:
+
+```javascript
+props: {
+  children: Array.isArray(children) ? children : [children],
+}
+```
+
+## Error Handling
+
+### Development Mode
+
+```javascript
+if (!container) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('createPortal: target container is not a DOM element.')
+  }
+  return null
+}
+```
+
+<Warning>
+  If the container is not a valid DOM element, `createPortal` returns `null` in production and logs an error in development.
+</Warning>
+
+## Advanced Patterns
+
+### Portal with Cleanup
+
+```jsx
+import { createPortal, useEffect } from 'ryunix'
+
+const Modal = ({ children }) => {
+  useEffect(() => {
+    // Lock body scroll when modal is open
+    document.body.style.overflow = 'hidden'
+    
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [])
+  
+  return createPortal(
+    <div className="modal">{children}</div>,
+    document.body
+  )
+}
+```
+
+### Multiple Portal Targets
+
+```jsx
+import { createPortal, useStore } from 'ryunix'
+
+const MultiPortal = ({ children }) => {
+  const [target, setTarget] = useStore('header')
+  
+  const containers = {
+    header: document.getElementById('header-portal'),
+    sidebar: document.getElementById('sidebar-portal'),
+    footer: document.getElementById('footer-portal'),
+  }
+  
+  return (
+    <div>
+      <select onChange={(e) => setTarget(e.target.value)}>
+        <option value="header">Header</option>
+        <option value="sidebar">Sidebar</option>
+        <option value="footer">Footer</option>
+      </select>
+      
+      {createPortal(children, containers[target])}
+    </div>
+  )
+}
+```
+
+### Nested Portals
+
+```jsx
+import { createPortal } from 'ryunix'
+
+const NestedModal = () => {
+  return createPortal(
+    <div className="modal-outer">
+      <h2>Outer Modal</h2>
+      {createPortal(
+        <div className="modal-inner">
+          <h3>Inner Modal</h3>
+        </div>,
+        document.getElementById('inner-modal-root')
+      )}
+    </div>,
+    document.body
+  )
+}
+```
+
+### Portal with Event Bubbling
+
+```jsx
+import { createPortal } from 'ryunix'
+
+// Events bubble through React tree, not DOM tree
+const Parent = () => {
+  const handleClick = () => {
+    console.log('Clicked in portal, but caught in parent!')
+  }
+  
+  return (
+    <div onClick={handleClick}>
+      <h1>Parent Component</h1>
+      {createPortal(
+        <button>Click me (event bubbles to parent)</button>,
+        document.body
+      )}
+    </div>
+  )
+}
+```
+
+### Conditional Portal
+
+```jsx
+import { createPortal, useStore } from 'ryunix'
+
+const ConditionalPortal = ({ usePortal, children }) => {
+  if (usePortal) {
+    return createPortal(children, document.body)
+  }
+  return children
+}
+
+const App = () => {
+  const [usePortal, setUsePortal] = useStore(false)
+  
+  return (
+    <div>
+      <input 
+        type="checkbox" 
+        checked={usePortal}
+        onChange={(e) => setUsePortal(e.target.checked)}
+      />
+      <label>Use Portal</label>
+      
+      <ConditionalPortal usePortal={usePortal}>
+        <div className="content">This may or may not be in a portal</div>
+      </ConditionalPortal>
+    </div>
+  )
+}
+```
+
+## Common Use Cases
+
+### 1. Modal Dialogs
+
+```jsx
+const Modal = ({ isOpen, children }) => {
+  if (!isOpen) return null
+  
+  return createPortal(
+    <div className="modal-backdrop">
+      <div className="modal">{children}</div>
+    </div>,
+    document.body
+  )
+}
+```
+
+### 2. Context Menus
+
+```jsx
+const ContextMenu = ({ x, y, items }) => {
+  return createPortal(
+    <div className="context-menu" style={{ left: x, top: y }}>
+      {items.map(item => (
+        <div key={item.id} onClick={item.onClick}>
+          {item.label}
+        </div>
+      ))}
+    </div>,
+    document.body
+  )
+}
+```
+
+### 3. Toast Notifications
+
+```jsx
+const Toast = ({ message, type }) => {
+  return createPortal(
+    <div className={`toast toast-${type}`}>
+      {message}
+    </div>,
+    document.getElementById('toast-root')
+  )
+}
+```
+
+### 4. Full-Screen Overlays
+
+```jsx
+const Overlay = ({ children }) => {
+  return createPortal(
+    <div className="overlay">{children}</div>,
+    document.body
+  )
+}
+```
+
+## Best Practices
+
+<Tip>
+  Create dedicated portal root elements in your HTML for better organization:
+  ```html
+  <div id="modal-root"></div>
+  <div id="tooltip-root"></div>
+  <div id="dropdown-root"></div>
+  ```
+</Tip>
+
+<Tip>
+  Always clean up side effects (like body scroll locks) when portals unmount.
+</Tip>
+
+<Note>
+  Events bubble through the React component tree, not the DOM tree. A click in a portal will bubble to React ancestors, even if they're in different parts of the DOM.
+</Note>
+
+<Warning>
+  Make sure the target container exists before creating a portal, or it will return `null`.
+</Warning>
+
+## CSS Considerations
+
+```css
+/* Portal containers should have high z-index */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 9999;
+}
+```
+
+## SSR Compatibility
+
+<Warning>
+  Portals require DOM elements, which don't exist during server-side rendering. Always check for browser environment:
+</Warning>
+
+```jsx
+import { createPortal } from 'ryunix'
+
+const Modal = ({ children }) => {
+  if (typeof document === 'undefined') {
+    return null // or render inline during SSR
+  }
+  
+  return createPortal(children, document.body)
+}
+```
+
+## Related
+
+- See the examples above for modal and tooltip implementation patterns
+- Check the SSR Compatibility section above for server-side rendering considerations

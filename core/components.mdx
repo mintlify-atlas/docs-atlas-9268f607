@@ -1,0 +1,311 @@
+---
+title: "Built-in Components"
+description: "Native Ryunix components that integrate directly with the reconciler and rendering engine"
+icon: "cube"
+---
+
+Ryunix ships with several native components that hook directly into the framework's reconciler phases, providing robust error handling, code splitting, and advanced rendering capabilities.
+
+## Component Boundary Handling
+
+### ErrorBoundary
+
+A native Ryunix component that catches JavaScript errors thrown anywhere in its child component tree, preventing the entire application from crashing.
+
+<CodeGroup>
+```jsx Basic Usage
+import { ErrorBoundary } from '@unsetsoft/ryunixjs';
+
+const App = () => (
+  <ErrorBoundary fallback={<div>Something went wrong!</div>}>
+    <MyComponent />
+  </ErrorBoundary>
+);
+```
+
+```jsx With Error Details
+const App = () => (
+  <ErrorBoundary 
+    fallback={(error) => (
+      <div>
+        <h2>Error Occurred</h2>
+        <pre>{error.message}</pre>
+      </div>
+    )}
+  >
+    <MyComponent />
+  </ErrorBoundary>
+);
+```
+</CodeGroup>
+
+<Note>
+  **How it works:** ErrorBoundary operates inside the `performUnitOfWork` loop. When an unhandled exception is caught during render, the reconciler climbs up the `fiber.parent` chain searching for `RYUNIX_ERROR_BOUNDARY`. It dynamically prunes corrupted children, sets `stateError` inside the fiber, and rewinds the `wipFiber` pointer so the loop safely recovers and displays the fallback.
+</Note>
+
+**Source Reference:** `/packages/core/src/lib/errorBoundary.js:10` and `/packages/core/src/lib/workers.js:27`
+
+#### API
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `fallback` | `ReactNode \| (error: Error) => ReactNode` | UI to display when an error is caught |
+| `children` | `ReactNode` | Child components to protect |
+
+### ServerBoundary
+
+Used to exclusively shield content that was rendered on the server during Partial Hydration. This component is essential for Island Architecture.
+
+```jsx
+import { ServerBoundary } from '@unsetsoft/ryunixjs';
+
+const Page = () => (
+  <div>
+    <InteractiveHeader />
+    <ServerBoundary>
+      {/* This content stays static, no hydration */}
+      <StaticMarkdownContent />
+    </ServerBoundary>
+  </div>
+);
+```
+
+<Tip>
+  Children inside a ServerBoundary are ignored by the client-side app, preventing hydration mismatches on inherently server-dependent nodes (such as dynamic markdown or database lists that don't need interactivity).
+</Tip>
+
+**Use Cases:**
+- Database-rendered lists without client interactivity
+- Server-side markdown compilation
+- Static content mixed with interactive islands
+
+## Asynchronous Loading
+
+### lazy()
+
+Creates a `LazyComponent` acting as a wrapper for dynamic code splitting using `import()`. Features three internal states: `PENDING`, `RESOLVED`, `REJECTED`.
+
+<Steps>
+  <Step title="Import lazy function">
+    ```jsx
+    import { lazy } from '@unsetsoft/ryunixjs';
+    ```
+  </Step>
+  
+  <Step title="Create lazy component">
+    ```jsx
+    const Dashboard = lazy(() => import('./Dashboard'));
+    ```
+  </Step>
+  
+  <Step title="Wrap with Suspense">
+    ```jsx
+    import { Suspense } from '@unsetsoft/ryunixjs';
+
+    const App = () => (
+      <Suspense fallback={<div>Loading dashboard...</div>}>
+        <Dashboard />
+      </Suspense>
+    );
+    ```
+  </Step>
+</Steps>
+
+**Source Reference:** `/packages/core/src/lib/lazy.js:21`
+
+<Note>
+  When a lazy component finishes downloading, it triggers a synchronous `forceUpdate` to re-render with the loaded module.
+</Note>
+
+#### Internal States
+
+```javascript
+const SUSPENSE_STATUS = {
+  PENDING: 'pending',    // Module is loading
+  RESOLVED: 'resolved',  // Module loaded successfully
+  REJECTED: 'rejected',  // Module failed to load
+};
+```
+
+### Suspense
+
+Pairs perfectly with `lazy()`. It detects whether any child element inside its tree is still internally `PENDING` and renders a fallback skeleton UI while loading.
+
+```jsx
+import { Suspense, lazy } from '@unsetsoft/ryunixjs';
+
+const HeavyChart = lazy(() => import('./HeavyChart'));
+const DataTable = lazy(() => import('./DataTable'));
+
+const Dashboard = () => (
+  <Suspense fallback={<Spinner />}>
+    <HeavyChart />
+    <DataTable />
+  </Suspense>
+);
+```
+
+**Source Reference:** `/packages/core/src/lib/lazy.js:85`
+
+<Warning>
+  Suspense checks each child to see if it's a lazy component. If any child is `PENDING`, the entire Suspense boundary shows the fallback.
+</Warning>
+
+#### Server-Side Rendering Integration
+
+Very powerful when paired with Server-Side-Rendering (`renderToReadableStream`). It delegates lazy loading to a background Promise and streams the fallback immediately, then substitutes it via `<template>` replacement when the server task finishes.
+
+**API:**
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `fallback` | `ReactNode` | UI to display while children are loading |
+| `children` | `ReactNode` | Lazy components or regular components |
+
+### preload()
+
+Utility function that immediately invokes the chunk fetch. Can be triggered on hover events via Link headers before a user clicks.
+
+```jsx
+import { preload, lazy } from '@unsetsoft/ryunixjs';
+
+const Dashboard = lazy(() => import('./Dashboard'));
+
+const Navigation = () => {
+  const handleMouseEnter = () => {
+    preload(() => import('./Dashboard'));
+  };
+
+  return (
+    <a href="/dashboard" onMouseEnter={handleMouseEnter}>
+      Dashboard
+    </a>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/lazy.js:125`
+
+<Tip>
+  Prefetching on hover can significantly improve perceived performance by loading code before the user clicks.
+</Tip>
+
+## Advanced Scopes
+
+### MDXProvider & MDXContent
+
+Native support for MDX compilation. Injects a context containing `defaultComponents` map that automatically aliases standard HTML tags to Ryunix `createElement` host nodes.
+
+<CodeGroup>
+```jsx Basic MDX Setup
+import { MDXProvider, MDXContent } from '@unsetsoft/ryunixjs';
+
+const customComponents = {
+  h1: (props) => <h1 className="text-4xl font-bold" {...props} />,
+  p: (props) => <p className="my-4" {...props} />,
+  code: CodeBlock,
+};
+
+const App = () => (
+  <MDXProvider value={customComponents}>
+    <MDXContent>
+      {/* Your MDX content */}
+    </MDXContent>
+  </MDXProvider>
+);
+```
+
+```jsx Using getMDXComponents
+import { getMDXComponents } from '@unsetsoft/ryunixjs';
+
+const MyMDXComponent = () => {
+  const components = getMDXComponents({
+    h1: CustomH1,
+    pre: CustomPre,
+  });
+
+  return <div>{/* Use components */}</div>;
+};
+```
+</CodeGroup>
+
+**Source Reference:** `/packages/core/src/lib/components.js:106`
+
+#### Default Components
+
+Ryunix provides optimized default components for all standard HTML elements:
+
+- **Headings:** `h1`, `h2`, `h3`, `h4`, `h5`, `h6`
+- **Text:** `p`, `a`, `strong`, `em`, `code`
+- **Lists:** `ul`, `ol`, `li`
+- **Blocks:** `blockquote`, `pre`, `hr`
+- **Tables:** `table`, `thead`, `tbody`, `tr`, `th`, `td`
+- **Media:** `img`
+
+### createPortal()
+
+Marked with `Symbol.for('ryunix.portal')`. Instructs the Commit phase (`commitWork()`) to abandon the standard parent-child logical appendage and directly map the constructed children DOM nodes into a secondary `portalContainer` located anywhere on the page.
+
+```jsx
+import { createPortal } from '@unsetsoft/ryunixjs';
+
+const Modal = ({ isOpen, children }) => {
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div className="modal-overlay">
+      <div className="modal-content">
+        {children}
+      </div>
+    </div>,
+    document.getElementById('modal-root')
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/portal.js:22`
+
+<Note>
+  **Excellent for:** Top-level z-index modals, tooltips, dropdowns, and any UI that needs to escape its parent's DOM hierarchy.
+</Note>
+
+#### How It Works
+
+<Steps>
+  <Step title="Portal Detection">
+    During the commit phase, the reconciler detects fibers marked with `RYUNIX_PORTAL`.
+  </Step>
+  
+  <Step title="Container Swap">
+    Instead of appending to the logical parent, it uses the `containerInfo` property to find the target container.
+  </Step>
+  
+  <Step title="Direct Rendering">
+    Children are rendered directly into the portal container via `commitPortalWork()`.
+  </Step>
+</Steps>
+
+**API:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `children` | `ReactNode` | Elements to render in the portal |
+| `container` | `HTMLElement` | DOM container to render into |
+
+## Image Component
+
+Optimized image component that wraps native `<img>` with Ryunix createElement.
+
+```jsx
+import { Image } from '@unsetsoft/ryunixjs';
+
+const Avatar = () => (
+  <Image 
+    src="/avatar.jpg" 
+    alt="User avatar"
+    className="rounded-full"
+  />
+);
+```
+
+**Source Reference:** `/packages/core/src/lib/components.js:102`

@@ -1,0 +1,358 @@
+---
+title: 'useCallback'
+description: 'Memoize callback functions to prevent unnecessary re-renders'
+icon: 'function'
+---
+
+## Overview
+
+`useCallback` returns a memoized version of a callback function that only changes if one of its dependencies has changed. This is useful when passing callbacks to optimized child components that rely on reference equality to prevent unnecessary renders.
+
+<Note>
+  `useCallback(fn, deps)` is equivalent to `useMemo(() => fn, deps)`. It's syntactic sugar for memoizing functions.
+</Note>
+
+## Signature
+
+```typescript
+function useCallback<T extends Function>(
+  callback: T,
+  deps: any[]
+): T
+```
+
+## Parameters
+
+<ParamField path="callback" type="Function" required>
+  The callback function to memoize. This function will be returned if dependencies haven't changed.
+
+  ```javascript
+  const handleClick = useCallback(() => {
+    doSomething(a, b)
+  }, [a, b])
+  ```
+</ParamField>
+
+<ParamField path="deps" type="any[]" required>
+  Array of dependencies. The callback is recreated only when one of these dependencies changes.
+
+  <Warning>
+    The dependencies array is **required**. Omitting it will throw an error.
+  </Warning>
+</ParamField>
+
+## Returns
+
+<ResponseField name="callback" type="Function">
+  The memoized callback function. Same reference is returned across re-renders unless dependencies change.
+</ResponseField>
+
+## Usage
+
+### Preventing Child Re-renders
+
+```jsx
+import { useCallback, useStore, useMemo } from '@ryunixjs/core'
+
+const ExpensiveChild = ({ onClick }) => {
+  console.log('ExpensiveChild rendered')
+  return <button onClick={onClick}>Click me</button>
+}
+
+function Parent() {
+  const [count, setCount] = useStore(0)
+  const [text, setText] = useStore('')
+
+  // ❌ Without useCallback - new function on every render
+  // const handleClick = () => {
+  //   setCount(count + 1)
+  // }
+
+  // ✅ With useCallback - same function reference
+  const handleClick = useCallback(() => {
+    setCount(prev => prev + 1)
+  }, []) // No dependencies needed with functional update
+
+  return (
+    <div>
+      <input value={text} onChange={(e) => setText(e.target.value)} />
+      <ExpensiveChild onClick={handleClick} />
+      <p>Count: {count}</p>
+    </div>
+  )
+}
+```
+
+### Event Handlers with Dependencies
+
+```jsx
+import { useCallback } from '@ryunixjs/core'
+
+function SearchBox({ onSearch, category }) {
+  const handleSearch = useCallback((query) => {
+    // This function is recreated only when category changes
+    onSearch(query, category)
+  }, [onSearch, category])
+
+  return (
+    <input 
+      type="text" 
+      onChange={(e) => handleSearch(e.target.value)} 
+    />
+  )
+}
+```
+
+### With useEffect Dependencies
+
+```jsx
+import { useCallback, useEffect, useStore } from '@ryunixjs/core'
+
+function DataFetcher({ userId }) {
+  const [data, setData] = useStore(null)
+
+  // Memoize the fetch function
+  const fetchData = useCallback(async () => {
+    const response = await fetch(`/api/users/${userId}`)
+    const json = await response.json()
+    setData(json)
+  }, [userId])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData]) // Safe to use as dependency
+
+  return <div>{data?.name}</div>
+}
+```
+
+### Debounced Callbacks
+
+```jsx
+import { useCallback, useEffect, useRef } from '@ryunixjs/core'
+
+function SearchInput({ onSearch }) {
+  const timerRef = useRef(null)
+
+  const debouncedSearch = useCallback((query) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+    }
+
+    timerRef.current = setTimeout(() => {
+      onSearch(query)
+    }, 300)
+  }, [onSearch])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
+    }
+  }, [])
+
+  return (
+    <input 
+      type="text" 
+      onChange={(e) => debouncedSearch(e.target.value)} 
+    />
+  )
+}
+```
+
+### Form Handlers
+
+```jsx
+import { useCallback, useStore } from '@ryunixjs/core'
+
+function Form() {
+  const [formData, setFormData] = useStore({
+    name: '',
+    email: '',
+    message: ''
+  })
+
+  const handleChange = useCallback((field) => (e) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: e.target.value
+    }))
+  }, [])
+
+  const handleSubmit = useCallback((e) => {
+    e.preventDefault()
+    console.log('Submitting:', formData)
+  }, [formData])
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={formData.name} onChange={handleChange('name')} />
+      <input value={formData.email} onChange={handleChange('email')} />
+      <textarea value={formData.message} onChange={handleChange('message')} />
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+## Implementation
+
+`useCallback` is implemented as a wrapper around `useMemo`:
+
+```javascript
+const useCallback = (callback, deps) => {
+  if (!is.function(callback)) {
+    throw new Error('useCallback requires a function as first argument')
+  }
+  return useMemo(() => callback, deps)
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:248-253`
+
+<Note>
+  Since `useCallback` uses `useMemo` internally, it inherits all of `useMemo`'s dependency comparison and validation behavior.
+</Note>
+
+## Validation
+
+The hook validates that the first argument is a function:
+
+```javascript
+if (!is.function(callback)) {
+  throw new Error('useCallback requires a function as first argument')
+}
+```
+
+<Warning>
+  Passing a non-function value will throw an error immediately.
+</Warning>
+
+## Common Patterns
+
+### Higher-Order Callbacks
+
+```jsx
+const makeHandler = useCallback((id) => {
+  return () => handleItemClick(id)
+}, [handleItemClick])
+```
+
+### Callbacks with Multiple Dependencies
+
+```jsx
+const handleUpdate = useCallback(() => {
+  updateData(userId, settings, filters)
+}, [userId, settings, filters])
+```
+
+### Stable Callbacks with Refs
+
+```jsx
+import { useCallback, useRef } from '@ryunixjs/core'
+
+function Component({ onChange }) {
+  const onChangeRef = useRef(onChange)
+  
+  // Keep ref updated
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  // Stable callback that always calls latest onChange
+  const stableOnChange = useCallback((...args) => {
+    onChangeRef.current?.(...args)
+  }, [])
+
+  return <ChildComponent onChange={stableOnChange} />
+}
+```
+
+## When to Use useCallback
+
+<CardGroup cols={2}>
+  <Card title="Use useCallback when:" icon="check">
+    - Passing callbacks to optimized child components
+    - Using callbacks in dependency arrays
+    - Creating event handlers that shouldn't change
+    - Integrating with third-party libraries
+  </Card>
+  <Card title="Don't use useCallback when:" icon="xmark">
+    - The callback is not passed to child components
+    - Child components aren't memoized
+    - Premature optimization
+    - The callback changes on every render anyway
+  </Card>
+</CardGroup>
+
+## Common Pitfalls
+
+### Forgetting Functional Updates
+
+```jsx
+// ❌ Captures stale count value
+const [count, setCount] = useStore(0)
+const increment = useCallback(() => {
+  setCount(count + 1) // Will always add 1 to initial value
+}, []) // Missing 'count' dependency
+
+// ✅ Use functional update
+const increment = useCallback(() => {
+  setCount(prev => prev + 1)
+}, []) // No dependencies needed
+```
+
+### Missing Dependencies
+
+```jsx
+// ❌ Missing dependencies
+const handleClick = useCallback(() => {
+  doSomething(userId, settings) // userId and settings not in deps
+}, [])
+
+// ✅ Include all dependencies
+const handleClick = useCallback(() => {
+  doSomething(userId, settings)
+}, [userId, settings])
+```
+
+### Over-optimization
+
+```jsx
+// ❌ Unnecessary - simple inline function is fine
+const handleClick = useCallback(() => {
+  console.log('clicked')
+}, [])
+
+// ✅ Just use inline function if not passed to children
+return <button onClick={() => console.log('clicked')}>Click</button>
+```
+
+## Performance Considerations
+
+<Tip>
+  `useCallback` itself has overhead. Only use it when:
+  1. The callback is passed to a memoized child component
+  2. The callback is used in a dependency array
+  3. You've identified a performance issue through profiling
+</Tip>
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useMemo" icon="brain" href="./useMemo">
+    Memoize computed values instead of functions
+  </Card>
+  <Card title="useEffect" icon="bolt" href="./useEffect">
+    Use callbacks as effect dependencies
+  </Card>
+  <Card title="useRef" icon="link" href="./useRef">
+    Store mutable values that don't trigger re-renders
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useMemo](/api/hooks/useMemo)
+- See the examples above for optimization patterns

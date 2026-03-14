@@ -1,0 +1,439 @@
+---
+title: 'useContext'
+description: 'Access context values from parent providers without prop drilling'
+icon: 'diagram-project'
+---
+
+## Overview
+
+`useContext` allows components to access values from a Context Provider without prop drilling. It's created alongside a context using the `createContext` function in RyunixJS.
+
+Context provides a way to share data across the component tree without manually passing props through every level.
+
+## Creating Context
+
+First, create a context using `createContext`:
+
+```typescript
+function createContext<T>(
+  contextId?: string,
+  defaultValue?: T
+): {
+  Provider: Component,
+  useContext: (ctxID?: string) => T
+}
+```
+
+### Parameters
+
+<ParamField path="contextId" type="string">
+  Optional unique identifier for the context. Defaults to `RYUNIX_TYPES.RYUNIX_CONTEXT`.
+</ParamField>
+
+<ParamField path="defaultValue" type="T">
+  Default value returned when no Provider is found in the component tree. Defaults to `{}`.
+</ParamField>
+
+### Returns
+
+<ResponseField name="Provider" type="Component">
+  A component that provides the context value to its children
+</ResponseField>
+
+<ResponseField name="useContext" type="(ctxID?: string) => T">
+  A hook function to consume the context value
+</ResponseField>
+
+## Usage
+
+### Basic Theme Example
+
+```jsx
+import { createContext, useStore } from '@ryunixjs/core'
+
+// Create the context
+const ThemeContext = createContext('theme', { theme: 'light' })
+
+function ThemeProvider({ children }) {
+  const [theme, setTheme] = useStore('light')
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light')
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+function ThemedButton() {
+  const { theme, toggleTheme } = ThemeContext.useContext()
+
+  return (
+    <button 
+      style={{ background: theme === 'light' ? '#fff' : '#000' }}
+      onClick={toggleTheme}
+    >
+      Toggle Theme
+    </button>
+  )
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <ThemedButton />
+    </ThemeProvider>
+  )
+}
+```
+
+### User Authentication Context
+
+```jsx
+import { createContext, useStore, useEffect } from '@ryunixjs/core'
+
+const AuthContext = createContext('auth', {
+  user: null,
+  isAuthenticated: false,
+  login: () => {},
+  logout: () => {}
+})
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useStore(null)
+  const [loading, setLoading] = useStore(true)
+
+  useEffect(() => {
+    // Check for existing session
+    fetch('/api/auth/session')
+      .then(res => res.json())
+      .then(data => {
+        setUser(data.user)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  const login = async (credentials) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials)
+    })
+    const data = await response.json()
+    setUser(data.user)
+  }
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    setUser(null)
+  }
+
+  const value = {
+    user,
+    isAuthenticated: !!user,
+    login,
+    logout,
+    loading
+  }
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+function UserProfile() {
+  const { user, logout } = AuthContext.useContext()
+
+  if (!user) return <div>Not logged in</div>
+
+  return (
+    <div>
+      <h1>Welcome, {user.name}!</h1>
+      <button onClick={logout}>Logout</button>
+    </div>
+  )
+}
+```
+
+### Nested Contexts
+
+```jsx
+import { createContext } from '@ryunixjs/core'
+
+const ThemeContext = createContext('theme', { mode: 'light' })
+const LanguageContext = createContext('language', { lang: 'en' })
+
+function App() {
+  return (
+    <ThemeContext.Provider value={{ mode: 'dark' }}>
+      <LanguageContext.Provider value={{ lang: 'es' }}>
+        <Content />
+      </LanguageContext.Provider>
+    </ThemeContext.Provider>
+  )
+}
+
+function Content() {
+  const { mode } = ThemeContext.useContext()
+  const { lang } = LanguageContext.useContext()
+
+  return (
+    <div>
+      <p>Theme: {mode}</p>
+      <p>Language: {lang}</p>
+    </div>
+  )
+}
+```
+
+### API Client Context
+
+```jsx
+import { createContext, useMemo } from '@ryunixjs/core'
+
+const APIContext = createContext('api', null)
+
+function APIProvider({ baseURL, children }) {
+  const api = useMemo(() => ({
+    async get(endpoint) {
+      const response = await fetch(`${baseURL}${endpoint}`)
+      return response.json()
+    },
+    async post(endpoint, data) {
+      const response = await fetch(`${baseURL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      return response.json()
+    }
+  }), [baseURL])
+
+  return (
+    <APIContext.Provider value={api}>
+      {children}
+    </APIContext.Provider>
+  )
+}
+
+function UserList() {
+  const api = APIContext.useContext()
+  const [users, setUsers] = useStore([])
+
+  useEffect(() => {
+    api.get('/users').then(setUsers)
+  }, [api])
+
+  return (
+    <ul>
+      {users.map(user => <li key={user.id}>{user.name}</li>)}
+    </ul>
+  )
+}
+```
+
+## Implementation Details
+
+The context implementation walks up the fiber tree to find the nearest provider:
+
+```javascript
+const useContext = (ctxID = contextId) => {
+  const state = getState()
+  if (state.isServerRendering) {
+    return (state.ssrContexts && state.ssrContexts[ctxID] !== undefined)
+      ? state.ssrContexts[ctxID]
+      : defaultValue
+  }
+
+  validateHookCall()
+
+  let fiber = state.wipFiber
+
+  while (fiber) {
+    if (fiber._contextId === ctxID && fiber._contextValue !== undefined) {
+      return fiber._contextValue
+    }
+    if (
+      fiber.type?._contextId === ctxID &&
+      fiber.props?.value !== undefined
+    ) {
+      return fiber.props.value
+    }
+    fiber = fiber.parent
+  }
+  return defaultValue
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:283-308`
+
+<Note>
+  The hook traverses the component tree upwards until it finds a matching Provider or reaches the root.
+</Note>
+
+## SSR Behavior
+
+During server-side rendering, contexts can be provided via `state.ssrContexts`:
+
+```javascript
+if (state.isServerRendering) {
+  return (state.ssrContexts && state.ssrContexts[ctxID] !== undefined)
+    ? state.ssrContexts[ctxID]
+    : defaultValue
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:285-289`
+
+<Warning>
+  When rendering on the server, make sure to provide context values through the `ssrContexts` configuration or use default values that work for SSR.
+</Warning>
+
+## Built-in Router Context
+
+RyunixJS includes a built-in RouterContext:
+
+```javascript
+const RouterContext = createContext('ryunix.navigation', {
+  location: '/',
+  params: {},
+  query: {},
+  navigate: (path) => {},
+  route: null,
+})
+```
+
+Source: `packages/core/src/lib/hooks.js:421-427`
+
+See [useRouter](/api/hooks/useRouter) for more details.
+
+## Performance Optimization
+
+### Memoize Context Values
+
+```jsx
+import { createContext, useStore, useMemo } from '@ryunixjs/core'
+
+const DataContext = createContext('data', null)
+
+function DataProvider({ children }) {
+  const [data, setData] = useStore([])
+  const [filter, setFilter] = useStore('')
+
+  // Memoize to prevent unnecessary re-renders
+  const value = useMemo(() => ({
+    data,
+    filter,
+    setData,
+    setFilter
+  }), [data, filter])
+
+  return (
+    <DataContext.Provider value={value}>
+      {children}
+    </DataContext.Provider>
+  )
+}
+```
+
+### Split Contexts
+
+```jsx
+// Instead of one large context:
+const AppContext = createContext('app', {
+  user: null,
+  theme: 'light',
+  language: 'en',
+  notifications: []
+})
+
+// Split into focused contexts:
+const UserContext = createContext('user', null)
+const ThemeContext = createContext('theme', 'light')
+const LanguageContext = createContext('language', 'en')
+const NotificationContext = createContext('notifications', [])
+```
+
+<Tip>
+  Splitting contexts prevents components from re-rendering when unrelated context values change.
+</Tip>
+
+## Common Patterns
+
+### Custom Context Hook
+
+```jsx
+import { createContext } from '@ryunixjs/core'
+
+const UserContext = createContext('user', null)
+
+// Custom hook with validation
+function useUser() {
+  const context = UserContext.useContext()
+  if (!context) {
+    throw new Error('useUser must be used within UserProvider')
+  }
+  return context
+}
+
+export { UserContext, useUser }
+```
+
+### Context with Actions
+
+```jsx
+import { createContext, useReducer } from '@ryunixjs/core'
+
+const TodoContext = createContext('todos', null)
+
+const todoReducer = (state, action) => {
+  switch (action.type) {
+    case 'ADD':
+      return [...state, action.todo]
+    case 'REMOVE':
+      return state.filter(t => t.id !== action.id)
+    case 'TOGGLE':
+      return state.map(t => 
+        t.id === action.id ? { ...t, done: !t.done } : t
+      )
+    default:
+      return state
+  }
+}
+
+function TodoProvider({ children }) {
+  const [todos, dispatch] = useReducer(todoReducer, [])
+
+  const value = { todos, dispatch }
+
+  return (
+    <TodoContext.Provider value={value}>
+      {children}
+    </TodoContext.Provider>
+  )
+}
+```
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useStore" icon="database" href="./useStore">
+    Manage local component state
+  </Card>
+  <Card title="useReducer" icon="arrows-rotate" href="./useReducer">
+    Complex state logic in context providers
+  </Card>
+  <Card title="useMemo" icon="brain" href="./useMemo">
+    Optimize context value objects
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useRouter](/api/hooks/useRouter)
+- See the examples above for context patterns

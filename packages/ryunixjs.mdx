@@ -1,0 +1,1066 @@
+---
+title: '@unsetsoft/ryunixjs'
+description: Core library for the RyunixJS framework with fiber architecture and hooks system
+---
+
+## Overview
+
+`@unsetsoft/ryunixjs` is the foundational engine powering the RyunixJS framework. It provides a lightweight, high-performance library responsible for Virtual DOM reconciliation, hooks-based state management, concurrent rendering, and comprehensive Server-Side Rendering capabilities.
+
+<CardGroup cols={2}>
+  <Card title="Bundle Size" icon="feather">
+    Optimized for production with tree-shaking support
+  </Card>
+  <Card title="Node Support" icon="node">
+    Compatible with Node.js 20, 22, and 24
+  </Card>
+  <Card title="Zero Dependencies" icon="circle-check">
+    No runtime dependencies for minimal footprint
+  </Card>
+  <Card title="SSR Ready" icon="server">
+    Built-in server rendering for Node.js and Edge
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+npm install @unsetsoft/ryunixjs
+```
+
+### Canary Release
+
+```bash
+npm install @unsetsoft/ryunixjs@canary
+```
+
+<Note>
+Most projects should install this package automatically via `@unsetsoft/cra` or alongside `@unsetsoft/ryunix-presets`.
+</Note>
+
+## Package Information
+
+| Property | Value |
+| :--- | :--- |
+| **Package Name** | `@unsetsoft/ryunixjs` |
+| **Current Version** | `1.2.4-canary.17` |
+| **License** | MIT |
+| **Repository** | [github.com/UnSetSoft/Ryunixjs](https://github.com/UnSetSoft/Ryunixjs) |
+| **Module Type** | ESM with UMD fallback |
+
+## Package Exports
+
+The package exposes multiple entry points for different use cases:
+
+```json
+{
+  ".": {
+    "import": "./dist/Ryunix.esm.js",
+    "require": "./dist/Ryunix.umd.js",
+    "default": "./dist/Ryunix.umd.js"
+  },
+  "./jsx-runtime": "./jsx/jsx-runtime.js",
+  "./jsx-dev-runtime": "./jsx/jsx-dev-runtime.js",
+  "./package.json": "./package.json"
+}
+```
+
+### Main Entry Point
+
+```javascript
+import { render, createElement, useStore } from '@unsetsoft/ryunixjs'
+```
+
+### JSX Runtime (Automatic)
+
+Configured automatically by Babel when using `@unsetsoft/ryunix-presets`:
+
+```javascript
+// babel.config.js
+{
+  "plugins": [
+    ["@babel/plugin-transform-react-jsx", {
+      "runtime": "automatic",
+      "importSource": "@unsetsoft/ryunixjs"
+    }]
+  ]
+}
+```
+
+## Core API
+
+### Rendering
+
+#### render
+
+Renders a Ryunix element into a DOM container.
+
+```javascript
+import { render, createElement } from '@unsetsoft/ryunixjs'
+
+function App() {
+  return createElement('div', null, 'Hello, RyunixJS!')
+}
+
+render(createElement(App), document.getElementById('root'))
+```
+
+**Signature:**
+```typescript
+render(element: RyunixElement, container: HTMLElement): void
+```
+
+#### hydrate
+
+Hydrates server-rendered HTML with client-side interactivity.
+
+```javascript
+import { hydrate, createElement } from '@unsetsoft/ryunixjs'
+
+hydrate(createElement(App), document.getElementById('root'))
+```
+
+**Signature:**
+```typescript
+hydrate(element: RyunixElement, container: HTMLElement): void
+```
+
+<Tip>
+Use `hydrate` when your HTML was pre-rendered on the server to avoid re-rendering and preserve existing DOM nodes.
+</Tip>
+
+#### hydrateIslands
+
+Selectively hydrates specific components (Islands Architecture).
+
+```javascript
+import { hydrateIslands } from '@unsetsoft/ryunixjs'
+
+hydrateIslands()
+```
+
+#### init
+
+Initializes the Ryunix state. Called automatically by `render`.
+
+```javascript
+import { init } from '@unsetsoft/ryunixjs'
+
+init()
+```
+
+### Element Creation
+
+#### createElement
+
+Creates a Virtual DOM element.
+
+```javascript
+import { createElement } from '@unsetsoft/ryunixjs'
+
+const element = createElement(
+  'button',
+  { onClick: () => console.log('clicked') },
+  'Click me'
+)
+```
+
+**Signature:**
+```typescript
+createElement(
+  type: string | Function,
+  props: object | null,
+  ...children: any[]
+): RyunixElement
+```
+
+#### Fragment
+
+Groups multiple children without adding extra DOM nodes.
+
+```javascript
+import { createElement, Fragment } from '@unsetsoft/ryunixjs'
+
+function List() {
+  return createElement(Fragment, null,
+    createElement('li', null, 'Item 1'),
+    createElement('li', null, 'Item 2')
+  )
+}
+```
+
+#### cloneElement
+
+Clones an element with new props.
+
+```javascript
+import { cloneElement } from '@unsetsoft/ryunixjs'
+
+const cloned = cloneElement(element, { newProp: 'value' })
+```
+
+#### isValidElement
+
+Checks if a value is a valid Ryunix element.
+
+```javascript
+import { isValidElement } from '@unsetsoft/ryunixjs'
+
+if (isValidElement(value)) {
+  // Handle element
+}
+```
+
+## Hooks System
+
+RyunixJS provides a comprehensive hooks API for managing state, side effects, and component logic.
+
+### State Management
+
+#### useStore
+
+Manages component state (equivalent to React's `useState`).
+
+```javascript
+import { useStore } from '@unsetsoft/ryunixjs'
+
+function Counter() {
+  const [count, setCount] = useStore(0)
+  
+  return createElement('button',
+    { onClick: () => setCount(count + 1) },
+    `Count: ${count}`
+  )
+}
+```
+
+**Signature:**
+```typescript
+useStore<T>(initialState: T | (() => T)): [T, (newState: T | ((prev: T) => T)) => void]
+```
+
+<Note>
+State updates can accept either a new value or a function that receives the previous state and returns the new state.
+</Note>
+
+#### useReducer
+
+Manages complex state logic with a reducer function.
+
+```javascript
+import { useReducer } from '@unsetsoft/ryunixjs'
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'increment': return { count: state.count + 1 }
+    case 'decrement': return { count: state.count - 1 }
+    default: return state
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(reducer, { count: 0 })
+  
+  return createElement('div', null,
+    createElement('p', null, `Count: ${state.count}`),
+    createElement('button', 
+      { onClick: () => dispatch({ type: 'increment' }) },
+      'Increment'
+    )
+  )
+}
+```
+
+**Signature:**
+```typescript
+useReducer<S, A>(
+  reducer: (state: S, action: A) => S,
+  initialState: S,
+  init?: (initial: S) => S
+): [S, (action: A) => void]
+```
+
+#### usePersistentStore
+
+State that automatically syncs with `localStorage`.
+
+```javascript
+import { usePersistentStore } from '@unsetsoft/ryunixjs'
+
+function Settings() {
+  const [theme, setTheme] = usePersistentStore('theme', 'dark')
+  
+  return createElement('button',
+    { onClick: () => setTheme(theme === 'dark' ? 'light' : 'dark') },
+    `Theme: ${theme}`
+  )
+}
+```
+
+**Signature:**
+```typescript
+usePersistentStore<T>(key: string, initialState: T): [T, (value: T) => void]
+```
+
+#### useSwitch
+
+Optimized boolean toggle state.
+
+```javascript
+import { useSwitch } from '@unsetsoft/ryunixjs'
+
+function Toggle() {
+  const [isOn, toggle] = useSwitch(false)
+  
+  return createElement('button',
+    { onClick: toggle },
+    isOn ? 'ON' : 'OFF'
+  )
+}
+```
+
+### Side Effects
+
+#### useEffect
+
+Performs side effects after render.
+
+```javascript
+import { useEffect, useStore } from '@unsetsoft/ryunixjs'
+
+function DataFetcher() {
+  const [data, setData] = useStore(null)
+  
+  useEffect(() => {
+    fetch('/api/data')
+      .then(res => res.json())
+      .then(setData)
+    
+    return () => {
+      // Cleanup function (optional)
+    }
+  }, []) // Empty array = run once on mount
+  
+  return createElement('div', null, JSON.stringify(data))
+}
+```
+
+**Signature:**
+```typescript
+useEffect(callback: () => void | (() => void), deps?: any[]): void
+```
+
+<Warning>
+Omitting the dependencies array causes the effect to run after every render. Always specify dependencies to avoid performance issues.
+</Warning>
+
+#### useLayoutEffect
+
+Synchronous effect that runs before browser paint. Use for DOM measurements.
+
+```javascript
+import { useLayoutEffect, useRef } from '@unsetsoft/ryunixjs'
+
+function MeasureElement() {
+  const ref = useRef(null)
+  
+  useLayoutEffect(() => {
+    const height = ref.current.offsetHeight
+    console.log('Element height:', height)
+  }, [])
+  
+  return createElement('div', { ref }, 'Measure me')
+}
+```
+
+### Memoization
+
+#### useMemo
+
+Memoizes computed values.
+
+```javascript
+import { useMemo, useStore } from '@unsetsoft/ryunixjs'
+
+function ExpensiveCalculation() {
+  const [count, setCount] = useStore(0)
+  
+  const expensiveValue = useMemo(() => {
+    console.log('Computing...')
+    return count * 2
+  }, [count])
+  
+  return createElement('div', null, expensiveValue)
+}
+```
+
+#### useCallback
+
+Memoizes callback functions.
+
+```javascript
+import { useCallback, useStore } from '@unsetsoft/ryunixjs'
+
+function Parent() {
+  const [count, setCount] = useStore(0)
+  
+  const handleClick = useCallback(() => {
+    setCount(c => c + 1)
+  }, [])
+  
+  return createElement(Child, { onClick: handleClick })
+}
+```
+
+### Refs
+
+#### useRef
+
+Creates a mutable reference that persists across renders.
+
+```javascript
+import { useRef } from '@unsetsoft/ryunixjs'
+
+function TextInput() {
+  const inputRef = useRef(null)
+  
+  const focusInput = () => {
+    inputRef.current.focus()
+  }
+  
+  return createElement('div', null,
+    createElement('input', { ref: inputRef }),
+    createElement('button', { onClick: focusInput }, 'Focus')
+  )
+}
+```
+
+### Context
+
+#### createContext
+
+Creates a context for passing data through the component tree.
+
+```javascript
+import { createContext, createElement } from '@unsetsoft/ryunixjs'
+
+const ThemeContext = createContext('theme', 'light')
+
+function App() {
+  return createElement(ThemeContext.Provider, 
+    { value: 'dark' },
+    createElement(ThemedButton)
+  )
+}
+
+function ThemedButton() {
+  const theme = ThemeContext.useContext()
+  return createElement('button', { className: theme }, 'Themed Button')
+}
+```
+
+### Router Hooks
+
+#### useRouter
+
+Accesses routing context.
+
+```javascript
+import { useRouter } from '@unsetsoft/ryunixjs'
+
+function Navigation() {
+  const { location, navigate, params, query } = useRouter()
+  
+  return createElement('button',
+    { onClick: () => navigate('/about') },
+    'Go to About'
+  )
+}
+```
+
+#### usePathname
+
+Returns the current pathname.
+
+```javascript
+import { usePathname } from '@unsetsoft/ryunixjs'
+
+function CurrentPath() {
+  const pathname = usePathname()
+  return createElement('p', null, `Current path: ${pathname}`)
+}
+```
+
+#### useSearchParams
+
+Returns URLSearchParams object.
+
+```javascript
+import { useSearchParams } from '@unsetsoft/ryunixjs'
+
+function SearchParamsDisplay() {
+  const searchParams = useSearchParams()
+  const query = searchParams.get('q')
+  
+  return createElement('p', null, `Search query: ${query}`)
+}
+```
+
+#### useQuery
+
+Extracts query parameters as an object.
+
+```javascript
+import { useQuery } from '@unsetsoft/ryunixjs'
+
+function QueryDisplay() {
+  const query = useQuery() // { q: 'search', page: '2' }
+  
+  return createElement('pre', null, JSON.stringify(query, null, 2))
+}
+```
+
+#### useHash
+
+Tracks URL hash changes.
+
+```javascript
+import { useHash } from '@unsetsoft/ryunixjs'
+
+function HashDisplay() {
+  const hash = useHash() // e.g., '#section-1'
+  
+  return createElement('p', null, `Current hash: ${hash}`)
+}
+```
+
+### Utility Hooks
+
+#### useId
+
+Generates stable, unique IDs for accessibility (SSR-safe).
+
+```javascript
+import { useId } from '@unsetsoft/ryunixjs'
+
+function FormField() {
+  const id = useId()
+  
+  return createElement('div', null,
+    createElement('label', { htmlFor: id }, 'Name:'),
+    createElement('input', { id })
+  )
+}
+```
+
+#### useDebounce
+
+Debounces a value update.
+
+```javascript
+import { useDebounce, useStore } from '@unsetsoft/ryunixjs'
+
+function SearchInput() {
+  const [value, setValue] = useStore('')
+  const debouncedValue = useDebounce(value, 500)
+  
+  // debouncedValue updates 500ms after user stops typing
+  
+  return createElement('input', {
+    value,
+    onInput: (e) => setValue(e.target.value)
+  })
+}
+```
+
+#### useThrottle
+
+Throttles value updates.
+
+```javascript
+import { useThrottle, useStore } from '@unsetsoft/ryunixjs'
+
+function ScrollPosition() {
+  const [scrollY, setScrollY] = useStore(0)
+  const throttledScroll = useThrottle(scrollY, 300)
+  
+  // throttledScroll updates at most once per 300ms
+  
+  return createElement('p', null, `Scroll: ${throttledScroll}`)
+}
+```
+
+#### useMetadata
+
+Manages document metadata dynamically.
+
+```javascript
+import { useMetadata } from '@unsetsoft/ryunixjs'
+
+function PageComponent() {
+  useMetadata({
+    title: 'Page Title',
+    'og:title': 'Social Media Title',
+    'og:description': 'Description for social sharing',
+    canonical: 'https://example.com/page'
+  }, {
+    title: {
+      template: '%s | My Site',
+      prefix: 'My Site'
+    }
+  })
+  
+  return createElement('div', null, 'Content')
+}
+```
+
+### Concurrent Features
+
+#### useTransition
+
+Marks updates as non-urgent transitions.
+
+```javascript
+import { useTransition, useStore } from '@unsetsoft/ryunixjs'
+
+function SearchResults() {
+  const [query, setQuery] = useStore('')
+  const [isPending, startTransition] = useTransition()
+  
+  const handleChange = (value) => {
+    setQuery(value)
+    startTransition(() => {
+      // Heavy computation or state update
+      performExpensiveSearch(value)
+    })
+  }
+  
+  return createElement('div', null,
+    createElement('input', { onInput: (e) => handleChange(e.target.value) }),
+    isPending ? 'Loading...' : 'Results'
+  )
+}
+```
+
+#### useDeferredValue
+
+Defers a value update to keep UI responsive.
+
+```javascript
+import { useDeferredValue, useStore } from '@unsetsoft/ryunixjs'
+
+function FilteredList({ items }) {
+  const [filter, setFilter] = useStore('')
+  const deferredFilter = useDeferredValue(filter)
+  
+  // Use deferredFilter for expensive operations
+  const filtered = items.filter(item => 
+    item.includes(deferredFilter)
+  )
+  
+  return createElement('div', null,
+    createElement('input', { 
+      value: filter,
+      onInput: (e) => setFilter(e.target.value) 
+    }),
+    filtered.map(item => createElement('p', { key: item }, item))
+  )
+}
+```
+
+## Advanced Components
+
+### memo
+
+Prevents unnecessary re-renders.
+
+```javascript
+import { memo } from '@unsetsoft/ryunixjs'
+
+const ExpensiveComponent = memo(function ExpensiveComponent({ data }) {
+  console.log('Rendering expensive component')
+  return createElement('div', null, data)
+})
+```
+
+### lazy
+
+Code-splits components.
+
+```javascript
+import { lazy, Suspense, createElement } from '@unsetsoft/ryunixjs'
+
+const LazyComponent = lazy(() => import('./HeavyComponent'))
+
+function App() {
+  return createElement(Suspense,
+    { fallback: createElement('div', null, 'Loading...') },
+    createElement(LazyComponent)
+  )
+}
+```
+
+### ErrorBoundary
+
+Catches rendering errors.
+
+```javascript
+import { ErrorBoundary, createElement } from '@unsetsoft/ryunixjs'
+
+function App() {
+  return createElement(ErrorBoundary,
+    { fallback: createElement('div', null, 'Something went wrong') },
+    createElement(RiskyComponent)
+  )
+}
+```
+
+### ServerBoundary
+
+Handles server-side rendering errors.
+
+```javascript
+import { ServerBoundary } from '@unsetsoft/ryunixjs'
+
+function App() {
+  return createElement(ServerBoundary,
+    { fallback: createElement('div', null, 'Server error') },
+    createElement(ServerComponent)
+  )
+}
+```
+
+### forwardRef
+
+Forwards refs to child components.
+
+```javascript
+import { forwardRef, createElement } from '@unsetsoft/ryunixjs'
+
+const FancyInput = forwardRef((props, ref) => {
+  return createElement('input', { ref, ...props })
+})
+```
+
+### createPortal
+
+Renders children into a different DOM subtree.
+
+```javascript
+import { createPortal, createElement } from '@unsetsoft/ryunixjs'
+
+function Modal({ children }) {
+  return createPortal(
+    children,
+    document.getElementById('modal-root')
+  )
+}
+```
+
+## Server-Side Rendering
+
+### renderToString
+
+Renders to static HTML string.
+
+```javascript
+import { renderToString, createElement } from '@unsetsoft/ryunixjs'
+
+const html = renderToString(
+  createElement('div', null, 'Hello, SSR!')
+)
+
+console.log(html) // '<div>Hello, SSR!</div>'
+```
+
+**Signature:**
+```typescript
+renderToString(element: RyunixElement): string
+```
+
+### renderToReadableStream
+
+Renders to a streaming response (Node.js/Edge).
+
+```javascript
+import { renderToReadableStream } from '@unsetsoft/ryunixjs'
+
+const stream = renderToReadableStream(
+  createElement(App)
+)
+
+// Use with Express, Fastify, or Edge runtime
+response.send(stream)
+```
+
+## Utilities
+
+### batchUpdates
+
+Batches multiple state updates.
+
+```javascript
+import { batchUpdates } from '@unsetsoft/ryunixjs'
+
+batchUpdates(() => {
+  setCount(1)
+  setName('John')
+  setActive(true)
+})
+// Only one re-render occurs
+```
+
+### Priority
+
+Constants for update prioritization.
+
+```javascript
+import { Priority } from '@unsetsoft/ryunixjs'
+
+// Priority.IMMEDIATE
+// Priority.NORMAL
+// Priority.LOW
+```
+
+### Router Components
+
+#### RouterProvider
+
+Provides routing context.
+
+```javascript
+import { RouterProvider, createElement } from '@unsetsoft/ryunixjs'
+
+const routes = [
+  { path: '/', component: Home },
+  { path: '/about', component: About },
+  { path: '/users/:id', component: UserProfile }
+]
+
+function App() {
+  return createElement(RouterProvider,
+    { routes },
+    createElement(Children)
+  )
+}
+```
+
+#### Link
+
+Client-side navigation link.
+
+```javascript
+import { Link, createElement } from '@unsetsoft/ryunixjs'
+
+function Navigation() {
+  return createElement(Link,
+    { to: '/about', prefetch: true },
+    'About Us'
+  )
+}
+```
+
+#### NavLink
+
+Link with active state styling.
+
+```javascript
+import { NavLink, createElement } from '@unsetsoft/ryunixjs'
+
+function Navigation() {
+  return createElement(NavLink,
+    { 
+      to: '/about',
+      className: ({ isActive }) => isActive ? 'active' : ''
+    },
+    'About'
+  )
+}
+```
+
+## MDX Components
+
+When using MDX, the following components are available:
+
+```javascript
+import {
+  Image,
+  MDXContent,
+  MDXProvider,
+  useMDXComponents,
+  getMDXComponents,
+  defaultComponents
+} from '@unsetsoft/ryunixjs'
+```
+
+## Usage Examples
+
+### Complete Counter App
+
+```javascript
+import { render, createElement, useStore } from '@unsetsoft/ryunixjs'
+
+function Counter() {
+  const [count, setCount] = useStore(0)
+  
+  return createElement('div', null,
+    createElement('h1', null, `Count: ${count}`),
+    createElement('button', 
+      { onClick: () => setCount(count + 1) },
+      'Increment'
+    ),
+    createElement('button',
+      { onClick: () => setCount(count - 1) },
+      'Decrement'
+    ),
+    createElement('button',
+      { onClick: () => setCount(0) },
+      'Reset'
+    )
+  )
+}
+
+render(createElement(Counter), document.getElementById('root'))
+```
+
+### With JSX (using Babel)
+
+```jsx
+import { render, useStore } from '@unsetsoft/ryunixjs'
+
+function Counter() {
+  const [count, setCount] = useStore(0)
+  
+  return (
+    <div>
+      <h1>Count: {count}</h1>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+      <button onClick={() => setCount(count - 1)}>Decrement</button>
+      <button onClick={() => setCount(0)}>Reset</button>
+    </div>
+  )
+}
+
+render(<Counter />, document.getElementById('root'))
+```
+
+### Data Fetching with Effects
+
+```javascript
+import { render, createElement, useStore, useEffect } from '@unsetsoft/ryunixjs'
+
+function UserProfile({ userId }) {
+  const [user, setUser] = useStore(null)
+  const [loading, setLoading] = useStore(true)
+  const [error, setError] = useStore(null)
+  
+  useEffect(() => {
+    let cancelled = false
+    
+    setLoading(true)
+    fetch(`/api/users/${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled) {
+          setUser(data)
+          setLoading(false)
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setError(err.message)
+          setLoading(false)
+        }
+      })
+    
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+  
+  if (loading) return createElement('div', null, 'Loading...')
+  if (error) return createElement('div', null, `Error: ${error}`)
+  if (!user) return createElement('div', null, 'No user found')
+  
+  return createElement('div', null,
+    createElement('h1', null, user.name),
+    createElement('p', null, user.email)
+  )
+}
+```
+
+## TypeScript Support
+
+While the core package is written in JavaScript, you can use TypeScript by declaring types:
+
+```typescript
+import { useStore, createElement } from '@unsetsoft/ryunixjs'
+
+interface CounterProps {
+  initialCount?: number
+}
+
+function Counter({ initialCount = 0 }: CounterProps) {
+  const [count, setCount] = useStore<number>(initialCount)
+  
+  return createElement('div', null,
+    createElement('p', null, `Count: ${count}`),
+    createElement('button', 
+      { onClick: () => setCount(count + 1) },
+      'Increment'
+    )
+  )
+}
+```
+
+## Performance Tips
+
+<Steps>
+  <Step title="Use memo for expensive components">
+    Wrap components that perform heavy computations with `memo` to prevent unnecessary re-renders.
+  </Step>
+  
+  <Step title="Optimize dependency arrays">
+    Always specify accurate dependency arrays in `useEffect`, `useMemo`, and `useCallback`.
+  </Step>
+  
+  <Step title="Lazy load heavy components">
+    Use `lazy` and `Suspense` to split large components into separate bundles.
+  </Step>
+  
+  <Step title="Batch state updates">
+    Use `batchUpdates` when updating multiple state variables simultaneously.
+  </Step>
+  
+  <Step title="Use transitions for heavy updates">
+    Mark non-urgent updates with `useTransition` to keep the UI responsive.
+  </Step>
+</Steps>
+
+## Browser Support
+
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
+
+<Note>
+For older browsers, use appropriate polyfills for Promise, fetch, and other modern APIs.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Build Configuration" icon="wrench" href="/packages/ryunix-presets">
+    Configure Webpack and development tools
+  </Card>
+  <Card title="Hooks Guide" icon="hook" href="/core/hooks">
+    Deep dive into hooks patterns
+  </Card>
+  <Card title="SSR Guide" icon="server" href="/webpack/routing-ssr-ssg">
+    Server-Side Rendering setup
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/render">
+    Complete API documentation
+  </Card>
+</CardGroup>

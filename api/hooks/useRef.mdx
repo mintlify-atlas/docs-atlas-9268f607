@@ -1,0 +1,476 @@
+---
+title: 'useRef'
+description: 'Create a mutable reference that persists across renders'
+icon: 'link'
+---
+
+## Overview
+
+`useRef` returns a mutable ref object whose `.current` property is initialized to the passed argument. The returned object persists for the full lifetime of the component and doesn't trigger re-renders when mutated.
+
+Common use cases:
+- Accessing DOM elements directly
+- Storing mutable values that don't require re-renders
+- Keeping previous values
+- Storing timeout/interval IDs
+- Integrating with third-party libraries
+
+## Signature
+
+```typescript
+function useRef<T>(initialValue: T): { current: T }
+```
+
+## Parameters
+
+<ParamField path="initialValue" type="T" required>
+  The initial value for the ref's `.current` property. Can be any type.
+
+  ```javascript
+  const countRef = useRef(0)
+  const inputRef = useRef(null)
+  const timerRef = useRef(undefined)
+  ```
+</ParamField>
+
+## Returns
+
+<ResponseField name="ref" type="{ current: T }">
+  An object with a single `.current` property that holds the mutable value. The object itself remains stable across renders.
+
+  ```javascript
+  {
+    current: initialValue
+  }
+  ```
+</ResponseField>
+
+## Usage
+
+### DOM References
+
+```jsx
+import { useRef, useEffect } from '@ryunixjs/core'
+
+function TextInput() {
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    // Focus the input on mount
+    inputRef.current?.focus()
+  }, [])
+
+  return (
+    <input 
+      ref={inputRef} 
+      type="text" 
+      placeholder="Auto-focused input" 
+    />
+  )
+}
+```
+
+### Storing Mutable Values
+
+```jsx
+import { useRef, useStore } from '@ryunixjs/core'
+
+function Timer() {
+  const [seconds, setSeconds] = useStore(0)
+  const [isRunning, setIsRunning] = useStore(false)
+  const intervalRef = useRef(null)
+
+  const start = () => {
+    if (isRunning) return
+    
+    setIsRunning(true)
+    intervalRef.current = setInterval(() => {
+      setSeconds(prev => prev + 1)
+    }, 1000)
+  }
+
+  const stop = () => {
+    clearInterval(intervalRef.current)
+    setIsRunning(false)
+  }
+
+  const reset = () => {
+    stop()
+    setSeconds(0)
+  }
+
+  return (
+    <div>
+      <p>Seconds: {seconds}</p>
+      <button onClick={start} disabled={isRunning}>Start</button>
+      <button onClick={stop} disabled={!isRunning}>Stop</button>
+      <button onClick={reset}>Reset</button>
+    </div>
+  )
+}
+```
+
+### Previous Value Tracking
+
+```jsx
+import { useRef, useEffect } from '@ryunixjs/core'
+
+function usePrevious(value) {
+  const ref = useRef()
+  
+  useEffect(() => {
+    ref.current = value
+  }, [value])
+  
+  return ref.current
+}
+
+function Counter({ count }) {
+  const prevCount = usePrevious(count)
+  
+  return (
+    <div>
+      <p>Current: {count}</p>
+      <p>Previous: {prevCount}</p>
+      <p>Changed by: {count - (prevCount || 0)}</p>
+    </div>
+  )
+}
+```
+
+### Avoiding Stale Closures
+
+```jsx
+import { useRef, useEffect, useCallback } from '@ryunixjs/core'
+
+function ChatRoom({ roomId, onMessage }) {
+  const onMessageRef = useRef(onMessage)
+
+  // Keep ref updated with latest callback
+  useEffect(() => {
+    onMessageRef.current = onMessage
+  }, [onMessage])
+
+  useEffect(() => {
+    const handleMessage = (msg) => {
+      // Always calls the latest onMessage
+      onMessageRef.current(msg)
+    }
+
+    ChatAPI.subscribe(roomId, handleMessage)
+    return () => ChatAPI.unsubscribe(roomId, handleMessage)
+  }, [roomId]) // onMessage not needed in deps
+
+  return <div>Chat Room: {roomId}</div>
+}
+```
+
+### Measuring DOM Elements
+
+```jsx
+import { useRef, useStore, useEffect } from '@ryunixjs/core'
+
+function MeasuredDiv() {
+  const divRef = useRef(null)
+  const [dimensions, setDimensions] = useStore({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (divRef.current) {
+        setDimensions({
+          width: divRef.current.offsetWidth,
+          height: divRef.current.offsetHeight
+        })
+      }
+    }
+
+    updateDimensions()
+    window.addEventListener('resize', updateDimensions)
+    return () => window.removeEventListener('resize', updateDimensions)
+  }, [])
+
+  return (
+    <div ref={divRef}>
+      <p>Width: {dimensions.width}px</p>
+      <p>Height: {dimensions.height}px</p>
+    </div>
+  )
+}
+```
+
+### Debouncing with Refs
+
+```jsx
+import { useRef, useEffect } from '@ryunixjs/core'
+
+function SearchInput({ onSearch }) {
+  const timeoutRef = useRef(null)
+
+  const handleChange = (e) => {
+    const value = e.target.value
+
+    // Clear previous timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+
+    // Set new timeout
+    timeoutRef.current = setTimeout(() => {
+      onSearch(value)
+    }, 300)
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
+  return <input type="text" onChange={handleChange} />
+}
+```
+
+### Instance Variables (Class-like Behavior)
+
+```jsx
+import { useRef } from '@ryunixjs/core'
+
+function VideoPlayer({ src }) {
+  const videoRef = useRef(null)
+  const isPlayingRef = useRef(false)
+
+  const play = () => {
+    videoRef.current?.play()
+    isPlayingRef.current = true
+  }
+
+  const pause = () => {
+    videoRef.current?.pause()
+    isPlayingRef.current = false
+  }
+
+  const toggle = () => {
+    if (isPlayingRef.current) {
+      pause()
+    } else {
+      play()
+    }
+  }
+
+  return (
+    <div>
+      <video ref={videoRef} src={src} />
+      <button onClick={toggle}>Play/Pause</button>
+    </div>
+  )
+}
+```
+
+## Implementation Details
+
+```javascript
+const useRef = (initialValue) => {
+  const state = getState()
+  if (state.isServerRendering) {
+    return { current: initialValue }
+  }
+
+  validateHookCall()
+
+  const { wipFiber, hookIndex } = state
+  const oldHook = wipFiber.alternate?.hooks?.[hookIndex]
+
+  const hook = {
+    hookID: hookIndex,
+    type: RYUNIX_TYPES.RYUNIX_REF,
+    value: oldHook ? oldHook.value : { current: initialValue },
+  }
+
+  wipFiber.hooks[hookIndex] = hook
+  state.hookIndex++
+  return hook.value
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:159-179`
+
+<Note>
+  The ref object is created once and the same object is returned on subsequent renders. Only the initial value is used on the first render.
+</Note>
+
+## SSR Behavior
+
+During server-side rendering, a new ref object is created:
+
+```javascript
+if (state.isServerRendering) {
+  return { current: initialValue }
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:161-163`
+
+<Warning>
+  On the server, refs are created fresh for each render. They don't persist across server renders.
+</Warning>
+
+## Key Characteristics
+
+### Mutability
+
+```jsx
+const countRef = useRef(0)
+
+// ✅ Mutating .current doesn't trigger re-render
+countRef.current = countRef.current + 1
+
+// This is different from state:
+const [count, setCount] = useStore(0)
+setCount(count + 1) // Triggers re-render
+```
+
+### Persistence
+
+```jsx
+function Component() {
+  const ref = useRef(Math.random())
+  
+  // ref.current keeps the same random number across all renders
+  return <div>{ref.current}</div>
+}
+```
+
+### Referential Equality
+
+```jsx
+const ref1 = useRef(null)
+const ref2 = useRef(null)
+
+// The ref object itself is stable
+ref1 === ref1 // true (always same object reference)
+ref1 === ref2 // false (different objects)
+```
+
+## useRef vs useState
+
+<CardGroup cols={2}>
+  <Card title="useRef" icon="link">
+    - Doesn't trigger re-renders when mutated
+    - Synchronous updates (immediate)
+    - Used for values that don't affect rendering
+    - Mutable `.current` property
+  </Card>
+  <Card title="useStore" icon="database">
+    - Triggers re-renders when updated
+    - Asynchronous updates (batched)
+    - Used for values that affect rendering
+    - Immutable state updates
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Callback Ref Pattern
+
+```jsx
+function MeasuredComponent() {
+  const [height, setHeight] = useStore(0)
+  
+  const measuredRef = useCallback(node => {
+    if (node !== null) {
+      setHeight(node.getBoundingClientRect().height)
+    }
+  }, [])
+
+  return <div ref={measuredRef}>Measured content</div>
+}
+```
+
+### Forwarding Refs
+
+```jsx
+function FancyInput({ inputRef }) {
+  const internalRef = useRef(null)
+  
+  useEffect(() => {
+    if (inputRef) {
+      inputRef.current = internalRef.current
+    }
+  }, [inputRef])
+
+  return <input ref={internalRef} />
+}
+```
+
+## Common Pitfalls
+
+### Don't Read/Write During Render
+
+```jsx
+// ❌ Don't mutate during render
+function Component() {
+  const ref = useRef(0)
+  ref.current = ref.current + 1 // Bad: causes inconsistency
+  return <div>{ref.current}</div>
+}
+
+// ✅ Mutate in event handlers or effects
+function Component() {
+  const ref = useRef(0)
+  
+  const handleClick = () => {
+    ref.current = ref.current + 1
+  }
+  
+  return <button onClick={handleClick}>Click</button>
+}
+```
+
+### Refs Don't Notify Changes
+
+```jsx
+// ❌ Component won't re-render when ref changes
+function Component() {
+  const ref = useRef(0)
+  
+  return (
+    <div>
+      <p>{ref.current}</p>
+      <button onClick={() => ref.current++}>Increment</button>
+    </div>
+  )
+}
+
+// ✅ Use state for values that should trigger renders
+function Component() {
+  const [count, setCount] = useStore(0)
+  
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={() => setCount(prev => prev + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useStore" icon="database" href="./useStore">
+    For values that should trigger re-renders
+  </Card>
+  <Card title="useCallback" icon="function" href="./useCallback">
+    Often used with refs for stable callbacks
+  </Card>
+  <Card title="useEffect" icon="bolt" href="./useEffect">
+    Access refs in effects for side effects
+  </Card>
+</CardGroup>
+
+## See Also
+
+- See the examples above for DOM manipulation and ref usage patterns

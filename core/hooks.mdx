@@ -1,0 +1,679 @@
+---
+title: "Hooks System"
+description: "Comprehensive Hooks API for state management, side effects, and lifecycle control"
+icon: "hook"
+---
+
+Ryunix provides a comprehensive Hooks API, maintaining familiarity with React patterns while integrating unique features for priority scheduling and routing.
+
+## State Management
+
+### useStore()
+
+The primary state hook (analogous to React's `useState`). Under the hood, it uses `useReducer`. Returns the current state and a dispatcher function.
+
+```jsx
+import { useStore } from '@unsetsoft/ryunixjs';
+
+const Counter = () => {
+  const [count, setCount] = useStore(0);
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+      <button onClick={() => setCount(c => c + 1)}>Increment (functional)</button>
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:25`
+
+<Note>
+  The dispatcher supports both direct values and functional updates: `setCount(5)` or `setCount(prev => prev + 1)`.
+</Note>
+
+#### How It Works
+
+```javascript
+const useStore = (initialState) => {
+  const reducer = (state, action) =>
+    is.function(action) ? action(state) : action;
+  return useReducer(reducer, initialState);
+};
+```
+
+### useReducer()
+
+Manages complex state logic with a reducer function. The dispatcher queues an action, updates the Work-In-Progress fiber, and schedules a render cycle via `scheduleWork`.
+
+<CodeGroup>
+```jsx Counter Example
+import { useReducer } from '@unsetsoft/ryunixjs';
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'increment':
+      return { count: state.count + 1 };
+    case 'decrement':
+      return { count: state.count - 1 };
+    case 'reset':
+      return { count: 0 };
+    default:
+      return state;
+  }
+};
+
+const Counter = () => {
+  const [state, dispatch] = useReducer(reducer, { count: 0 });
+
+  return (
+    <div>
+      <p>Count: {state.count}</p>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <button onClick={() => dispatch({ type: 'reset' })}>Reset</button>
+    </div>
+  );
+};
+```
+
+```jsx With Init Function
+const init = (initialCount) => ({ count: initialCount });
+
+const Counter = ({ initialCount }) => {
+  const [state, dispatch] = useReducer(reducer, initialCount, init);
+  // ...
+};
+```
+</CodeGroup>
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:50`
+
+#### API
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `reducer` | `(state, action) => newState` | State transition function |
+| `initialState` | `any` | Initial state value |
+| `init` | `(initialState) => state` | Optional lazy initializer |
+
+### usePersistentStore()
+
+A specialized hook that wraps `useStore` to synchronize state with `window.localStorage`. Automatically handles serialization/deserialization.
+
+```jsx
+import { usePersistentStore } from '@unsetsoft/ryunixjs';
+
+const Settings = () => {
+  const [theme, setTheme] = usePersistentStore('theme', 'light');
+
+  return (
+    <div>
+      <p>Current theme: {theme}</p>
+      <button onClick={() => setTheme('dark')}>Dark Mode</button>
+      <button onClick={() => setTheme('light')}>Light Mode</button>
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:722`
+
+<Warning>
+  Only use `usePersistentStore` with serializable values. Functions, symbols, and circular references will cause errors.
+</Warning>
+
+### useSwitch()
+
+Convenience hook for boolean state toggling.
+
+```jsx
+import { useSwitch } from '@unsetsoft/ryunixjs';
+
+const Modal = () => {
+  const [isOpen, toggle] = useSwitch(false);
+
+  return (
+    <div>
+      <button onClick={toggle}>Toggle Modal</button>
+      {isOpen && <ModalContent />}
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:760`
+
+## Side Effects & Lifecycle
+
+### useEffect()
+
+Runs side-effects after the render phase. Effect callbacks are executed if the dependency array changes.
+
+<CodeGroup>
+```jsx Data Fetching
+import { useEffect, useStore } from '@unsetsoft/ryunixjs';
+
+const UserProfile = ({ userId }) => {
+  const [user, setUser] = useStore(null);
+
+  useEffect(() => {
+    fetch(`/api/users/${userId}`)
+      .then(res => res.json())
+      .then(setUser);
+  }, [userId]);
+
+  return user ? <div>{user.name}</div> : <div>Loading...</div>;
+};
+```
+
+```jsx With Cleanup
+const ChatRoom = ({ roomId }) => {
+  useEffect(() => {
+    const connection = createConnection(roomId);
+    connection.connect();
+
+    return () => {
+      connection.disconnect();
+    };
+  }, [roomId]);
+
+  return <div>Chat Room</div>;
+};
+```
+
+```jsx Run Once
+const Analytics = () => {
+  useEffect(() => {
+    trackPageView();
+  }, []); // Empty deps = run once on mount
+
+  return null;
+};
+```
+</CodeGroup>
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:120`
+
+<Note>
+  Effects run **asynchronously** after the browser paints, preventing blocking of visual updates.
+</Note>
+
+### useLayoutEffect()
+
+Runs synchronously after DOM mutations but before the browser paints. Essential for making DOM measurements to avoid visual flickering.
+
+```jsx
+import { useLayoutEffect, useRef, useStore } from '@unsetsoft/ryunixjs';
+
+const Tooltip = ({ children }) => {
+  const tooltipRef = useRef(null);
+  const [position, setPosition] = useStore({ x: 0, y: 0 });
+
+  useLayoutEffect(() => {
+    const rect = tooltipRef.current.getBoundingClientRect();
+    setPosition({
+      x: rect.left,
+      y: rect.top - rect.height,
+    });
+  }, []);
+
+  return (
+    <div ref={tooltipRef} style={{ top: position.y, left: position.x }}>
+      {children}
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:780`
+
+<Warning>
+  Use `useLayoutEffect` sparingly. It blocks the browser from painting, which can harm performance if the effect is slow.
+</Warning>
+
+#### useEffect vs useLayoutEffect
+
+| Hook | Timing | Use Case |
+|------|--------|----------|
+| `useEffect` | After paint (async) | Data fetching, subscriptions, logging |
+| `useLayoutEffect` | Before paint (sync) | DOM measurements, scroll position, animations |
+
+## Performance & Memoization
+
+### useMemo()
+
+Memoizes an expensive computation based on dependencies.
+
+```jsx
+import { useMemo, useStore } from '@unsetsoft/ryunixjs';
+
+const DataTable = ({ items }) => {
+  const [filter, setFilter] = useStore('');
+
+  const filteredItems = useMemo(() => {
+    console.log('Filtering items...');
+    return items.filter(item => 
+      item.name.toLowerCase().includes(filter.toLowerCase())
+    );
+  }, [items, filter]);
+
+  return (
+    <div>
+      <input value={filter} onChange={e => setFilter(e.target.value)} />
+      {filteredItems.map(item => <div key={item.id}>{item.name}</div>)}
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:193`
+
+<Tip>
+  Only use `useMemo` for genuinely expensive calculations. Don't over-optimize—memoization has its own cost.
+</Tip>
+
+### useCallback()
+
+Memoizes a function reference to prevent unnecessary child component re-renders.
+
+```jsx
+import { useCallback, useStore } from '@unsetsoft/ryunixjs';
+
+const TodoList = () => {
+  const [todos, setTodos] = useStore([]);
+
+  const handleAddTodo = useCallback((text) => {
+    setTodos(prev => [...prev, { id: Date.now(), text }]);
+  }, []);
+
+  return (
+    <div>
+      <TodoInput onAdd={handleAddTodo} />
+      {todos.map(todo => <TodoItem key={todo.id} todo={todo} />)}
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:248`
+
+<Note>
+  `useCallback(fn, deps)` is equivalent to `useMemo(() => fn, deps)`.
+</Note>
+
+### useRef()
+
+Provides a mutable object that persists across renders. Does not trigger re-render when mutated.
+
+<CodeGroup>
+```jsx DOM References
+import { useRef } from '@unsetsoft/ryunixjs';
+
+const TextInput = () => {
+  const inputRef = useRef(null);
+
+  const focusInput = () => {
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div>
+      <input ref={inputRef} />
+      <button onClick={focusInput}>Focus Input</button>
+    </div>
+  );
+};
+```
+
+```jsx Storing Values
+const Timer = () => {
+  const intervalRef = useRef(null);
+  const [count, setCount] = useStore(0);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setCount(c => c + 1);
+    }, 1000);
+
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  return <div>Count: {count}</div>;
+};
+```
+</CodeGroup>
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:159`
+
+## Concurrent Mode & Priority
+
+Ryunix features a localized priority scheduler implemented over the base `useReducer`.
+
+### useTransition()
+
+Returns a boolean `isPending` state and a `startTransition` function. Allows marking specific state updates as non-urgent (Priority: LOW), keeping the application responsive during heavy renders.
+
+```jsx
+import { useTransition, useStore } from '@unsetsoft/ryunixjs';
+
+const SearchResults = () => {
+  const [query, setQuery] = useStore('');
+  const [results, setResults] = useStore([]);
+  const [isPending, startTransition] = useTransition();
+
+  const handleSearch = (value) => {
+    setQuery(value); // Urgent: update input immediately
+
+    startTransition(() => {
+      // Non-urgent: expensive search operation
+      const filtered = largeDataset.filter(item => 
+        item.includes(value)
+      );
+      setResults(filtered);
+    });
+  };
+
+  return (
+    <div>
+      <input value={query} onChange={e => handleSearch(e.target.value)} />
+      {isPending && <Spinner />}
+      <ResultsList results={results} />
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:674`
+
+<Note>
+  **How it works:** Dispatches the pending state (`isPending = true`) as `IMMEDIATE` priority, but immediately schedules the actual work (the callback) as `LOW` priority, yielding the main thread.
+</Note>
+
+### useDeferredValue()
+
+Defers updates to a value by wrapping it in a setTimeout with low priority, preventing UI blocking on fast inputs.
+
+```jsx
+import { useDeferredValue, useStore } from '@unsetsoft/ryunixjs';
+
+const SearchPage = () => {
+  const [query, setQuery] = useStore('');
+  const deferredQuery = useDeferredValue(query);
+
+  return (
+    <div>
+      <input value={query} onChange={e => setQuery(e.target.value)} />
+      {/* Uses deferred value for expensive render */}
+      <SearchResults query={deferredQuery} />
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:694`
+
+<Tip>
+  `useDeferredValue` uses a 100ms debouncing `setTimeout` alongside `Priority.LOW` to delay re-rendering expensive calculated text/data.
+</Tip>
+
+## Context
+
+### createContext()
+
+Returns a `{ Provider, useContext }` pair. The internal traversal system walks up the fiber tree to find the nearest matching Provider.
+
+<CodeGroup>
+```jsx Theme Context
+import { createContext } from '@unsetsoft/ryunixjs';
+
+const ThemeContext = createContext('theme', 'light');
+
+const App = () => (
+  <ThemeContext.Provider value="dark">
+    <Header />
+    <Main />
+  </ThemeContext.Provider>
+);
+
+const Header = () => {
+  const theme = ThemeContext.useContext();
+  return <header className={theme}>Header</header>;
+};
+```
+
+```jsx User Context
+const UserContext = createContext('user', null);
+
+const App = () => {
+  const [user, setUser] = useStore(null);
+
+  return (
+    <UserContext.Provider value={{ user, setUser }}>
+      <Dashboard />
+    </UserContext.Provider>
+  );
+};
+
+const Dashboard = () => {
+  const { user } = UserContext.useContext();
+  return <div>Welcome, {user?.name}</div>;
+};
+```
+</CodeGroup>
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:269`
+
+#### API
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `contextId` | `string` | `'RYUNIX_CONTEXT'` | Unique context identifier |
+| `defaultValue` | `any` | `{}` | Default value when no Provider found |
+
+## Routing & Navigation
+
+Ryunix core includes built-in SPA router capabilities.
+
+### useRouter()
+
+Returns the router context with location, params, query, and navigate function.
+
+```jsx
+import { useRouter } from '@unsetsoft/ryunixjs';
+
+const ProductPage = () => {
+  const { params, query, navigate } = useRouter();
+
+  return (
+    <div>
+      <h1>Product: {params.id}</h1>
+      <p>Sort: {query.sort}</p>
+      <button onClick={() => navigate('/')}>Home</button>
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:519`
+
+#### Return Value
+
+```typescript
+{
+  location: string,        // Current pathname
+  params: object,          // Route parameters
+  query: object,           // Query parameters
+  navigate: (path) => void, // Navigation function
+  route: object            // Current route object
+}
+```
+
+### usePathname()
+
+Returns the current pathname without query or hash.
+
+```jsx
+import { usePathname } from '@unsetsoft/ryunixjs';
+
+const Breadcrumbs = () => {
+  const pathname = usePathname();
+  const parts = pathname.split('/').filter(Boolean);
+
+  return (
+    <nav>
+      {parts.map((part, i) => <span key={i}>{part}</span>)}
+    </nav>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:556`
+
+### useSearchParams()
+
+Returns a URLSearchParams object for query string manipulation.
+
+```jsx
+import { useSearchParams } from '@unsetsoft/ryunixjs';
+
+const FilteredList = () => {
+  const searchParams = useSearchParams();
+  const category = searchParams.get('category');
+  const sort = searchParams.get('sort');
+
+  return <div>Category: {category}, Sort: {sort}</div>;
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:564`
+
+### useHash()
+
+Returns the current URL hash and reactively updates on `hashchange` events.
+
+```jsx
+import { useHash } from '@unsetsoft/ryunixjs';
+
+const TabNavigation = () => {
+  const hash = useHash();
+  const activeTab = hash.slice(1) || 'overview';
+
+  return (
+    <div>
+      <a href="#overview">Overview</a>
+      <a href="#details">Details</a>
+      <TabContent tab={activeTab} />
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:336`
+
+### useMetadata()
+
+Manages SEO and document tags (Title, Canonical, OpenGraph) dynamically. On the server, it buffers metadata to be injected into static HTML.
+
+```jsx
+import { useMetadata } from '@unsetsoft/ryunixjs';
+
+const BlogPost = ({ post }) => {
+  useMetadata(
+    {
+      pageTitle: post.title,
+      canonical: `https://example.com/blog/${post.slug}`,
+      'og:title': post.title,
+      'og:description': post.excerpt,
+      'og:image': post.coverImage,
+      'twitter:card': 'summary_large_image',
+    },
+    {
+      title: {
+        template: '%s | My Blog',
+        prefix: 'My Blog',
+      },
+    }
+  );
+
+  return <article>{post.content}</article>;
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:367`
+
+<Warning>
+  This hook can't be reached by Google crawler for client-side rendered apps. For SEO-critical metadata, use Server-Side Rendering.
+</Warning>
+
+## Utility Hooks
+
+### useId()
+
+Generates a deterministic, unique ID that is stable across SSR and hydration.
+
+```jsx
+import { useId } from '@unsetsoft/ryunixjs';
+
+const FormField = ({ label }) => {
+  const id = useId();
+
+  return (
+    <div>
+      <label htmlFor={id}>{label}</label>
+      <input id={id} />
+    </div>
+  );
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:819`
+
+### useDebounce()
+
+Returns a debounced version of the value that only updates after the delay has passed since the last change.
+
+```jsx
+import { useDebounce, useStore } from '@unsetsoft/ryunixjs';
+
+const SearchInput = () => {
+  const [searchTerm, setSearchTerm] = useStore('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
+  useEffect(() => {
+    if (debouncedSearchTerm) {
+      // Perform search
+      searchAPI(debouncedSearchTerm);
+    }
+  }, [debouncedSearchTerm]);
+
+  return <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />;
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:850`
+
+### useThrottle()
+
+Returns a throttled version of the value that only updates at most once per specified interval.
+
+```jsx
+import { useThrottle, useStore } from '@unsetsoft/ryunixjs';
+
+const ScrollTracker = () => {
+  const [scrollY, setScrollY] = useStore(0);
+  const throttledScrollY = useThrottle(scrollY, 100);
+
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return <div>Scroll position: {throttledScrollY}</div>;
+};
+```
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:871`

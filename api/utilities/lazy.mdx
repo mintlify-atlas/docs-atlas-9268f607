@@ -1,0 +1,518 @@
+---
+title: 'lazy'
+description: 'Load components dynamically with code splitting'
+icon: 'bolt'
+---
+
+## Overview
+
+`lazy` enables code splitting by allowing you to load components dynamically. It works seamlessly with `Suspense` to show fallback UI while components are being loaded, reducing initial bundle size and improving performance.
+
+## Import
+
+```javascript
+import { lazy, preload } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+const lazy = (importFn) => {
+  let status = SUSPENSE_STATUS.PENDING
+  let Component = null
+  let error = null
+  let promise = null
+
+  const LazyComponent = (props) => {
+    // Returns loaded component, null while loading, or throws error
+  }
+
+  LazyComponent._isLazy = true
+  LazyComponent._getStatus = () => status
+
+  return LazyComponent
+}
+```
+
+## Parameters
+
+<ParamField path="importFn" type="Function" required>
+  A function that returns a dynamic `import()` promise. The imported module should have a `default` export or named export.
+</ParamField>
+
+## Returns
+
+<ResponseField name="LazyComponent" type="Function">
+  A lazy-loaded component that integrates with Suspense. The component is marked with `_isLazy = true` for Suspense detection.
+</ResponseField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { lazy, Suspense } from 'ryunix'
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'))
+
+const App = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HeavyComponent />
+    </Suspense>
+  )
+}
+```
+
+```jsx Route-Based Code Splitting
+import { lazy, Suspense } from 'ryunix'
+
+const Home = lazy(() => import('./pages/Home'))
+const About = lazy(() => import('./pages/About'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+
+const App = ({ route }) => {
+  return (
+    <Suspense fallback={<div>Loading page...</div>}>
+      {route === '/' && <Home />}
+      {route === '/about' && <About />}
+      {route === '/dashboard' && <Dashboard />}
+    </Suspense>
+  )
+}
+```
+
+```jsx Named Exports
+import { lazy, Suspense } from 'ryunix'
+
+// Import named export
+const NamedComponent = lazy(() => 
+  import('./components').then(module => ({ default: module.NamedComponent }))
+)
+
+const App = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <NamedComponent />
+    </Suspense>
+  )
+}
+```
+
+```jsx Multiple Lazy Components
+import { lazy, Suspense } from 'ryunix'
+
+const Header = lazy(() => import('./Header'))
+const Sidebar = lazy(() => import('./Sidebar'))
+const Content = lazy(() => import('./Content'))
+
+const Layout = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <Header />
+      <Sidebar />
+      <Content />
+    </Suspense>
+  )
+}
+```
+
+```jsx Conditional Loading
+import { lazy, Suspense, useStore } from 'ryunix'
+
+const AdminPanel = lazy(() => import('./AdminPanel'))
+
+const App = () => {
+  const [isAdmin, setIsAdmin] = useStore(false)
+  
+  return (
+    <div>
+      <button onClick={() => setIsAdmin(true)}>Show Admin</button>
+      
+      {isAdmin && (
+        <Suspense fallback={<div>Loading admin panel...</div>}>
+          <AdminPanel />
+        </Suspense>
+      )}
+    </div>
+  )
+}
+```
+
+</CodeGroup>
+
+## Loading States
+
+`lazy` manages three internal states:
+
+```javascript
+const SUSPENSE_STATUS = {
+  PENDING: 'pending',   // Component is loading
+  RESOLVED: 'resolved', // Component loaded successfully
+  REJECTED: 'rejected', // Loading failed
+}
+```
+
+### State Transitions
+
+1. **PENDING**: Initial state, component is being fetched
+2. **RESOLVED**: Import successful, component cached and ready
+3. **REJECTED**: Import failed, error thrown to ErrorBoundary
+
+## Behavior
+
+### First Render (PENDING)
+
+```javascript
+if (!promise) {
+  promise = importFn()
+    .then((module) => {
+      Component = module.default || module
+      status = SUSPENSE_STATUS.RESOLVED
+    })
+    .catch((err) => {
+      error = err
+      status = SUSPENSE_STATUS.REJECTED
+    })
+}
+
+// Returns null, Suspense shows fallback
+return null
+```
+
+### Subsequent Renders (RESOLVED)
+
+```javascript
+if (status === SUSPENSE_STATUS.RESOLVED && Component) {
+  return createElement(Component, props)
+}
+```
+
+### Error State (REJECTED)
+
+```javascript
+if (status === SUSPENSE_STATUS.REJECTED && error) {
+  throw error // Caught by ErrorBoundary
+}
+```
+
+### Re-render Trigger
+
+Lazy components use internal state management to trigger re-renders:
+
+```javascript
+const [, forceUpdate] = useStore(0)
+
+useEffect(() => {
+  if (status === SUSPENSE_STATUS.PENDING && promise) {
+    let active = true
+    promise.then(() => {
+      if (active) forceUpdate((x) => x + 1)
+    }).catch(() => {
+      if (active) forceUpdate((x) => x + 1)
+    })
+    return () => { active = false }
+  }
+}, [])
+```
+
+## Preload Function
+
+Preload components before they're needed:
+
+```javascript
+const preload = (importFn) => {
+  return importFn()
+}
+```
+
+### Usage
+
+<CodeGroup>
+
+```jsx Hover Preload
+import { lazy, preload } from 'ryunix'
+
+const importDashboard = () => import('./Dashboard')
+const Dashboard = lazy(importDashboard)
+
+const Nav = () => {
+  return (
+    <nav>
+      <a 
+        href="/dashboard"
+        onMouseEnter={() => preload(importDashboard)}
+      >
+        Dashboard
+      </a>
+    </nav>
+  )
+}
+```
+
+```jsx Route Prefetching
+import { lazy, preload } from 'ryunix'
+
+const routes = {
+  home: () => import('./pages/Home'),
+  about: () => import('./pages/About'),
+  contact: () => import('./pages/Contact'),
+}
+
+// Preload all routes on app mount
+Object.values(routes).forEach(preload)
+
+const Home = lazy(routes.home)
+const About = lazy(routes.about)
+const Contact = lazy(routes.contact)
+```
+
+```jsx User Action Prefetch
+import { lazy, preload } from 'ryunix'
+
+const importEditor = () => import('./Editor')
+const Editor = lazy(importEditor)
+
+const Dashboard = () => {
+  const handleNewPost = () => {
+    preload(importEditor) // Start loading before showing
+    // Then navigate to editor
+  }
+  
+  return (
+    <button onClick={handleNewPost}>
+      New Post
+    </button>
+  )
+}
+```
+
+</CodeGroup>
+
+## Error Handling
+
+### With ErrorBoundary
+
+```jsx
+import { lazy, Suspense, ErrorBoundary } from 'ryunix'
+
+const LazyComponent = lazy(() => import('./Component'))
+
+const App = () => {
+  return (
+    <ErrorBoundary 
+      fallback={(error) => (
+        <div>
+          <h1>Failed to load component</h1>
+          <p>{error.message}</p>
+          <button onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      )}
+    >
+      <Suspense fallback={<div>Loading...</div>}>
+        <LazyComponent />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+### Retry Logic
+
+```jsx
+import { lazy, Suspense, ErrorBoundary, useStore } from 'ryunix'
+
+const createLazyWithRetry = (importFn, retries = 3) => {
+  return lazy(() => {
+    return new Promise((resolve, reject) => {
+      const attemptLoad = (remainingRetries) => {
+        importFn()
+          .then(resolve)
+          .catch((error) => {
+            if (remainingRetries === 0) {
+              reject(error)
+            } else {
+              setTimeout(() => attemptLoad(remainingRetries - 1), 1000)
+            }
+          })
+      }
+      attemptLoad(retries)
+    })
+  })
+}
+
+const Component = createLazyWithRetry(() => import('./Component'))
+```
+
+## Advanced Patterns
+
+### Lazy with Props
+
+```jsx
+import { lazy, Suspense } from 'ryunix'
+
+const DynamicComponent = lazy(() => import('./Dynamic'))
+
+const App = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DynamicComponent 
+        title="Hello" 
+        onAction={() => console.log('action')}
+      />
+    </Suspense>
+  )
+}
+```
+
+### Nested Suspense
+
+```jsx
+import { lazy, Suspense } from 'ryunix'
+
+const Header = lazy(() => import('./Header'))
+const Sidebar = lazy(() => import('./Sidebar'))
+const Content = lazy(() => import('./Content'))
+
+const App = () => {
+  return (
+    <div>
+      <Suspense fallback={<div>Loading header...</div>}>
+        <Header />
+      </Suspense>
+      
+      <div className="main">
+        <Suspense fallback={<div>Loading sidebar...</div>}>
+          <Sidebar />
+        </Suspense>
+        
+        <Suspense fallback={<div>Loading content...</div>}>
+          <Content />
+        </Suspense>
+      </div>
+    </div>
+  )
+}
+```
+
+### Dynamic Import with Parameters
+
+```jsx
+import { lazy, Suspense } from 'ryunix'
+
+const createLazyChart = (type) => {
+  return lazy(() => import(`./charts/${type}Chart`))
+}
+
+const App = ({ chartType }) => {
+  const Chart = createLazyChart(chartType)
+  
+  return (
+    <Suspense fallback={<div>Loading chart...</div>}>
+      <Chart data={data} />
+    </Suspense>
+  )
+}
+```
+
+## Performance Optimization
+
+### Bundle Size Reduction
+
+```jsx
+// Before: Everything in one bundle (500KB)
+import Dashboard from './Dashboard'
+import Analytics from './Analytics'
+import Settings from './Settings'
+
+const App = () => {
+  return (
+    <Router>
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/analytics" component={Analytics} />
+      <Route path="/settings" component={Settings} />
+    </Router>
+  )
+}
+
+// After: Split into chunks (100KB initial, 3x 150KB chunks)
+import { lazy, Suspense } from 'ryunix'
+
+const Dashboard = lazy(() => import('./Dashboard'))
+const Analytics = lazy(() => import('./Analytics'))
+const Settings = lazy(() => import('./Settings'))
+
+const App = () => {
+  return (
+    <Router>
+      <Suspense fallback={<Loader />}>
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/analytics" component={Analytics} />
+        <Route path="/settings" component={Settings} />
+      </Suspense>
+    </Router>
+  )
+}
+```
+
+### Preload Strategy
+
+```jsx
+import { lazy, preload, useEffect } from 'ryunix'
+
+const Dashboard = lazy(() => import('./Dashboard'))
+const Analytics = lazy(() => import('./Analytics'))
+
+const App = () => {
+  useEffect(() => {
+    // Preload likely next routes after initial render
+    const timer = setTimeout(() => {
+      preload(() => import('./Dashboard'))
+      preload(() => import('./Analytics'))
+    }, 2000)
+    
+    return () => clearTimeout(timer)
+  }, [])
+  
+  return <Home />
+}
+```
+
+## Best Practices
+
+<Tip>
+  Use `lazy` at the route level for maximum bundle size reduction. Split on routes first, then on heavy components if needed.
+</Tip>
+
+<Tip>
+  Combine `lazy` with `preload` to start loading components before they're needed, reducing perceived load time.
+</Tip>
+
+<Warning>
+  Don't lazy-load components that are always visible on initial render. This adds unnecessary overhead and delays rendering.
+</Warning>
+
+<Note>
+  Lazy components are cached after first load. Subsequent renders are synchronous and fast.
+</Note>
+
+## SSR Compatibility
+
+<Warning>
+  `lazy` components require special handling in SSR. The server needs to wait for all lazy components to load before rendering HTML.
+</Warning>
+
+```javascript
+// Server checks isSuspenseBackground flag
+if (anyPending && !getState().isSuspenseBackground) {
+  return fallback
+}
+```
+
+## Related
+
+- [Suspense](/api/components/Suspense)
+- [ErrorBoundary](/api/components/ErrorBoundary)
+- [Lazy Loading Guide](/advanced/lazy-loading)

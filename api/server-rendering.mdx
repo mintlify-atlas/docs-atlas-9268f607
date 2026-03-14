@@ -1,0 +1,568 @@
+---
+title: 'Server Rendering'
+description: 'Server-side rendering APIs for generating HTML in RyunixJS'
+icon: 'server'
+---
+
+## renderToString
+
+Renders a RyunixElement to an HTML string synchronously. This is the simplest way to server-render your RyunixJS application.
+
+### Signature
+
+```javascript
+function renderToString(element): string
+```
+
+<ParamField path="element" type="RyunixElement" required>
+  The RyunixElement to render to HTML. Can be any valid element including components.
+</ParamField>
+
+### Returns
+
+<ResponseField name="html" type="string">
+  A string of HTML representing the rendered element and its children.
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Server Rendering
+
+```javascript
+import { renderToString } from '@ryunixjs/core/server'
+
+function App() {
+  return (
+    <div className="app">
+      <h1>Hello RyunixJS!</h1>
+      <p>This is server-rendered HTML.</p>
+    </div>
+  )
+}
+
+const html = renderToString(<App />)
+console.log(html)
+// Output:
+// <div class="app"><h1>Hello RyunixJS!</h1><p>This is server-rendered HTML.</p></div>
+```
+
+#### With Express
+
+```javascript
+import express from 'express'
+import { renderToString } from '@ryunixjs/core/server'
+import App from './App'
+
+const app = express()
+
+app.get('*', (req, res) => {
+  const html = renderToString(<App url={req.url} />)
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>My App</title>
+        <script type="module" src="/client.js"></script>
+      </head>
+      <body>
+        <div id="__ryunix">${html}</div>
+      </body>
+    </html>
+  `)
+})
+
+app.listen(3000)
+```
+
+#### With Node HTTP Server
+
+```javascript
+import { createServer } from 'http'
+import { renderToString } from '@ryunixjs/core/server'
+import App from './App'
+
+const server = createServer((req, res) => {
+  const html = renderToString(<App />)
+  
+  res.writeHead(200, { 'Content-Type': 'text/html' })
+  res.end(`<!DOCTYPE html>
+    <html>
+      <body>
+        <div id="root">${html}</div>
+      </body>
+    </html>
+  `)
+})
+
+server.listen(3000)
+```
+
+### HTML Escaping
+
+All text content and attribute values are automatically escaped:
+
+```javascript
+const element = (
+  <div title='He said "Hello"'>
+    <p>{'<script>alert("XSS")</script>'}</p>
+  </div>
+)
+
+const html = renderToString(element)
+// <div title="He said &quot;Hello&quot;">
+//   <p>&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;</p>
+// </div>
+```
+
+### Component Rendering
+
+Function components are called and their output is rendered:
+
+```javascript
+function Greeting({ name }) {
+  return <h1>Hello, {name}!</h1>
+}
+
+function App() {
+  return (
+    <div>
+      <Greeting name="Alice" />
+      <Greeting name="Bob" />
+    </div>
+  )
+}
+
+const html = renderToString(<App />)
+// <div><h1>Hello, Alice!</h1><h1>Hello, Bob!</h1></div>
+```
+
+<Warning>
+  `renderToString` is synchronous and cannot handle async components or Suspense. For streaming or async rendering, use `renderToReadableStream`.
+</Warning>
+
+---
+
+## renderToReadableStream
+
+Renders a RyunixElement to a Web Streams ReadableStream, enabling progressive/streaming rendering with Suspense support.
+
+### Signature
+
+```javascript
+function renderToReadableStream(element): ReadableStream
+```
+
+<ParamField path="element" type="RyunixElement" required>
+  The RyunixElement to render. Can include async components and Suspense boundaries.
+</ParamField>
+
+### Returns
+
+<ResponseField name="stream" type="ReadableStream">
+  A ReadableStream that emits chunks of HTML as they become available.
+  
+  The stream emits:
+  1. Initial HTML with Suspense fallbacks
+  2. Resolved Suspense content as it becomes ready
+  3. Scripts to replace fallbacks with real content
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Streaming
+
+```javascript
+import { renderToReadableStream } from '@ryunixjs/core/server'
+
+function App() {
+  return <div>Hello, streaming world!</div>
+}
+
+const stream = renderToReadableStream(<App />)
+
+// Read the stream
+const reader = stream.getReader()
+const decoder = new TextDecoder()
+
+let html = ''
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  html += decoder.decode(value, { stream: true })
+}
+
+console.log(html)
+```
+
+#### With Node.js HTTP Response
+
+```javascript
+import { createServer } from 'http'
+import { renderToReadableStream } from '@ryunixjs/core/server'
+import { Readable } from 'stream'
+import App from './App'
+
+const server = createServer(async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/html',
+    'Transfer-Encoding': 'chunked'
+  })
+  
+  res.write('<!DOCTYPE html><html><body><div id="root">')
+  
+  const stream = renderToReadableStream(<App />)
+  const nodeStream = Readable.fromWeb(stream)
+  
+  nodeStream.pipe(res, { end: false })
+  nodeStream.on('end', () => {
+    res.end('</div></body></html>')
+  })
+})
+
+server.listen(3000)
+```
+
+#### With Cloudflare Workers
+
+```javascript
+import { renderToReadableStream } from '@ryunixjs/core/server'
+import App from './App'
+
+export default {
+  async fetch(request) {
+    const stream = renderToReadableStream(<App />)
+    
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    })
+  },
+}
+```
+
+#### With Vercel Edge Functions
+
+```javascript
+import { renderToReadableStream } from '@ryunixjs/core/server'
+import App from './App'
+
+export const config = { runtime: 'edge' }
+
+export default async function handler(req) {
+  const stream = renderToReadableStream(<App url={req.url} />)
+  
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+  })
+}
+```
+
+### Suspense Support
+
+Streaming rendering fully supports Suspense boundaries:
+
+```jsx
+import { Suspense } from '@ryunixjs/core'
+
+async function UserData() {
+  const data = await fetchUser()
+  return <div>{data.name}</div>
+}
+
+function App() {
+  return (
+    <div>
+      <h1>My App</h1>
+      <Suspense fallback={<div>Loading user...</div>}>
+        <UserData />
+      </Suspense>
+    </div>
+  )
+}
+
+const stream = renderToReadableStream(<App />)
+```
+
+**Streaming Output:**
+
+```html
+<!-- Initial chunk with fallback -->
+<script>function $RC(id, templateId) { ... }</script>
+<div>
+  <h1>My App</h1>
+  <!--$?-->
+  <template id="B:a1b2c3"></template>
+  <div id="S:a1b2c3">
+    <div>Loading user...</div>
+  </div>
+  <!--$/-->
+</div>
+
+<!-- Later chunk when data resolves -->
+<template id="P:a1b2c3"><div>Alice</div></template>
+<script>$RC("S:a1b2c3", "P:a1b2c3")</script>
+```
+
+<Note>
+  The `$RC` helper function is automatically injected and replaces fallback content with resolved content on the client.
+</Note>
+
+---
+
+## Special Features
+
+### Style Rendering
+
+Style objects are converted to CSS strings:
+
+```jsx
+const element = (
+  <div style={{ backgroundColor: 'red', fontSize: '16px' }}>
+    Styled content
+  </div>
+)
+
+renderToString(element)
+// <div style="background-color:red;font-size:16px">Styled content</div>
+```
+
+### ClassName Support
+
+Both `className` and `ryunix-class` are converted to `class` attribute:
+
+```jsx
+renderToString(<div className="container" />)
+// <div class="container"></div>
+
+renderToString(<div ryunix-class="wrapper" />)
+// <div class="wrapper"></div>
+```
+
+### Void Elements
+
+Self-closing tags are rendered correctly:
+
+```jsx
+const elements = (
+  <>
+    <img src="logo.png" alt="Logo" />
+    <input type="text" />
+    <br />
+    <hr />
+  </>
+)
+
+renderToString(elements)
+// <img src="logo.png" alt="Logo" />
+// <input type="text" />
+// <br />
+// <hr />
+```
+
+Supported void elements: `area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`
+
+### SVG Attributes
+
+SVG attributes are correctly rendered with proper naming:
+
+```jsx
+const svg = (
+  <svg viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="40" fill="blue" />
+  </svg>
+)
+
+renderToString(svg)
+// <svg viewBox="0 0 100 100">
+//   <circle cx="50" cy="50" r="40" fill="blue" />
+// </svg>
+```
+
+### Dangerous HTML
+
+Raw HTML can be injected using `dangerouslySetInnerHTML`:
+
+```jsx
+const html = { __html: '<strong>Bold</strong> text' }
+
+const element = <div dangerouslySetInnerHTML={html} />
+
+renderToString(element)
+// <div><strong>Bold</strong> text</div>
+```
+
+<Warning>
+  Use `dangerouslySetInnerHTML` with caution. Never pass user-generated content without sanitization as it can lead to XSS vulnerabilities.
+</Warning>
+
+---
+
+## Islands Architecture
+
+Components marked as islands are wrapped with hydration markers:
+
+```jsx
+// Mark component as island
+function Counter({ initialCount }) {
+  const [count, setCount] = useState(initialCount)
+  return (
+    <div>
+      <button onClick={() => setCount(count - 1)}>-</button>
+      <span>{count}</span>
+      <button onClick={() => setCount(count + 1)}>+</button>
+    </div>
+  )
+}
+Counter.ryunix_client_id = 'Counter'
+
+// Render
+renderToString(<Counter initialCount={5} />)
+```
+
+**Output:**
+
+```html
+<div data-ryunix-island="Counter" data-props='{"initialCount":5}'>
+  <div>
+    <button>-</button>
+    <span>5</span>
+    <button>+</button>
+  </div>
+</div>
+```
+
+The client can then hydrate this island:
+
+```javascript
+import { hydrateIslands } from '@ryunixjs/core'
+import Counter from './Counter'
+
+hydrateIslands({ 'Counter': Counter })
+```
+
+---
+
+## Context Support
+
+Context providers work transparently in SSR:
+
+```jsx
+import { createContext } from '@ryunixjs/core'
+
+const ThemeContext = createContext('light')
+
+function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <ThemedComponent />
+    </ThemeContext.Provider>
+  )
+}
+
+function ThemedComponent() {
+  const theme = useContext(ThemeContext)
+  return <div>Theme: {theme}</div>
+}
+
+renderToString(<App />)
+// <div>Theme: dark</div>
+```
+
+<Note>
+  Context values are maintained during server rendering using `state.ssrContexts` but are not serialized to the client. Client components need to re-establish context.
+</Note>
+
+---
+
+## Fragment Support
+
+Fragments render transparently (no wrapper element):
+
+```jsx
+import { Fragment } from '@ryunixjs/core'
+
+function List() {
+  return (
+    <Fragment>
+      <li>Item 1</li>
+      <li>Item 2</li>
+      <li>Item 3</li>
+    </Fragment>
+  )
+}
+
+renderToString(
+  <ul>
+    <List />
+  </ul>
+)
+// <ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>
+```
+
+---
+
+## Implementation Details
+
+### Server Rendering State
+
+When rendering on the server, the global state is modified:
+
+```javascript
+const state = getState()
+state.isServerRendering = true  // Set during SSR
+state.ssrMetadata = {}          // Metadata for SSR
+state.ssrContexts = {}          // Context values
+```
+
+This flag is restored after rendering completes.
+
+### Event Handlers
+
+Event handlers (props starting with `on`) are ignored during SSR:
+
+```jsx
+renderToString(
+  <button onClick={() => alert('Click')}>Click Me</button>
+)
+// <button>Click Me</button>
+// onClick is not rendered
+```
+
+Event handlers are attached during hydration on the client.
+
+### Async Components
+
+`renderToReadableStream` supports async components:
+
+```jsx
+async function AsyncData() {
+  const data = await fetch('/api/data').then(r => r.json())
+  return <div>{data.message}</div>
+}
+
+// Works with streaming
+const stream = renderToReadableStream(<AsyncData />)
+
+// Does NOT work with renderToString (must be wrapped in Suspense)
+renderToString(<AsyncData />) // May not work as expected
+```
+
+### Encoding
+
+`renderToReadableStream` uses `TextEncoder` to convert strings to `Uint8Array`:
+
+```javascript
+const encoder = new TextEncoder()
+controller.enqueue(encoder.encode('<div>Hello</div>'))
+```
+
+<Tip>
+  For optimal performance with large applications:
+  - Use `renderToReadableStream` for streaming HTML as it's generated
+  - Wrap slow data fetching in Suspense boundaries
+  - Send the initial HTML shell quickly, then stream in dynamic content
+</Tip>

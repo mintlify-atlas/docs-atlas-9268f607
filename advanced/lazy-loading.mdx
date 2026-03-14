@@ -1,0 +1,562 @@
+---
+title: "Lazy Loading and Code Splitting"
+description: "Optimize bundle size and improve performance with lazy components and Suspense"
+icon: "spinner"
+---
+
+# Lazy Loading and Code Splitting
+
+RyunixJS provides built-in support for code splitting through `lazy()` components and `Suspense` boundaries. This allows you to load components on-demand, reducing initial bundle size and improving application performance.
+
+## Why Lazy Loading Matters
+
+<CardGroup cols={2}>
+  <Card title="Smaller Initial Bundle" icon="box">
+    Only load code that's needed for the initial render
+  </Card>
+  <Card title="Faster Time-to-Interactive" icon="bolt">
+    Reduce parsing and execution time by deferring non-critical code
+  </Card>
+  <Card title="Better Caching" icon="hard-drive">
+    Split code into smaller chunks that can be cached independently
+  </Card>
+  <Card title="Improved Performance" icon="gauge-high">
+    Load route-specific code only when users navigate to those routes
+  </Card>
+</CardGroup>
+
+## The lazy() Function
+
+The `lazy()` function creates a component that loads dynamically using dynamic `import()`:
+
+```javascript
+import { lazy } from '@unsetsoft/ryunixjs'
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'))
+
+function App() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HeavyComponent />
+    </Suspense>
+  )
+}
+```
+
+### How It Works
+
+<Steps>
+  <Step title="Import Function">
+    `lazy()` accepts a function that returns a dynamic import promise
+  </Step>
+  <Step title="Status Tracking">
+    The lazy component tracks loading status (pending, resolved, rejected)
+  </Step>
+  <Step title="Suspense Integration">
+    While loading, Suspense shows the fallback UI
+  </Step>
+  <Step title="Cached Resolution">
+    Once loaded, the component is cached and renders synchronously
+  </Step>
+</Steps>
+
+## Suspense Component
+
+Suspense boundaries define fallback UI while lazy components load:
+
+```javascript
+import { Suspense } from '@unsetsoft/ryunixjs'
+
+function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <LazyComponent />
+    </Suspense>
+  )
+}
+```
+
+### Suspense Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `fallback` | `Element` | UI to display while children are loading |
+| `children` | `ReactNode` | Lazy components or any child elements |
+
+<Note>
+Suspense will show the fallback if **any** child component is a lazy component that's still pending.
+</Note>
+
+## Basic Usage Patterns
+
+### Route-Based Code Splitting
+
+Split code by route for optimal loading:
+
+```javascript
+import { lazy, Suspense } from '@unsetsoft/ryunixjs'
+import { Router, Route } from '@unsetsoft/ryunixjs/router'
+
+const Home = lazy(() => import('./pages/Home'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Settings = lazy(() => import('./pages/Settings'))
+
+function App() {
+  return (
+    <Router>
+      <Suspense fallback={<PageLoader />}>
+        <Route path="/" component={Home} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/settings" component={Settings} />
+      </Suspense>
+    </Router>
+  )
+}
+```
+
+### Component-Level Splitting
+
+Lazy load heavy components:
+
+```javascript
+import { lazy, Suspense } from '@unsetsoft/ryunixjs'
+
+const DataChart = lazy(() => import('./DataChart'))
+const RichTextEditor = lazy(() => import('./RichTextEditor'))
+const ImageGallery = lazy(() => import('./ImageGallery'))
+
+function Dashboard() {
+  return (
+    <div className="dashboard">
+      <Header />
+      
+      <Suspense fallback={<Skeleton type="chart" />}>
+        <DataChart />
+      </Suspense>
+      
+      <Suspense fallback={<Skeleton type="editor" />}>
+        <RichTextEditor />
+      </Suspense>
+      
+      <Suspense fallback={<Skeleton type="gallery" />}>
+        <ImageGallery />
+      </Suspense>
+    </div>
+  )
+}
+```
+
+### Conditional Loading
+
+Load components only when needed:
+
+```javascript
+import { lazy, Suspense } from '@unsetsoft/ryunixjs'
+import { useStore } from '@unsetsoft/ryunixjs'
+
+const AdminPanel = lazy(() => import('./AdminPanel'))
+
+function App() {
+  const [user] = useStore(getCurrentUser())
+  
+  return (
+    <div>
+      <Header />
+      <MainContent />
+      
+      {user.isAdmin && (
+        <Suspense fallback={<div>Loading admin panel...</div>}>
+          <AdminPanel />
+        </Suspense>
+      )}
+    </div>
+  )
+}
+```
+
+## Advanced Patterns
+
+### Nested Suspense Boundaries
+
+Use multiple Suspense boundaries for granular loading states:
+
+```javascript
+function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <Header />
+      
+      <Suspense fallback={<SidebarSkeleton />}>
+        <LazySidebar />
+      </Suspense>
+      
+      <main>
+        <Suspense fallback={<ContentSkeleton />}>
+          <LazyContent />
+        </Suspense>
+      </main>
+    </Suspense>
+  )
+}
+```
+
+Each Suspense boundary operates independently:
+- Inner boundaries show specific loading states
+- Outer boundaries catch any uncaught lazy components
+- Users see progressive loading rather than all-or-nothing
+
+### Error Boundaries with Suspense
+
+Combine error handling with lazy loading:
+
+```javascript
+import { lazy, Suspense, ErrorBoundary } from '@unsetsoft/ryunixjs'
+
+const HeavyFeature = lazy(() => import('./HeavyFeature'))
+
+function App() {
+  return (
+    <ErrorBoundary fallback={<div>Failed to load feature</div>}>
+      <Suspense fallback={<LoadingSpinner />}>
+        <HeavyFeature />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+<Tip>
+Always wrap Suspense boundaries in ErrorBoundaries to handle loading failures gracefully.
+</Tip>
+
+### Named Exports
+
+Lazy load components with named exports:
+
+```javascript
+const DataTable = lazy(() => 
+  import('./components').then(module => ({ default: module.DataTable }))
+)
+```
+
+### Multiple Components
+
+Load multiple components from one module:
+
+```javascript
+const Charts = lazy(() => import('./Charts'))
+
+// In Charts.js
+export default function Charts() {
+  return (
+    <>
+      <LineChart />
+      <BarChart />
+      <PieChart />
+    </>
+  )
+}
+```
+
+## Preloading Components
+
+Preload components before they're needed:
+
+```javascript
+import { preload } from '@unsetsoft/ryunixjs'
+
+const HeavyModal = lazy(() => import('./HeavyModal'))
+
+function Button() {
+  const handleMouseEnter = () => {
+    // Preload on hover
+    preload(() => import('./HeavyModal'))
+  }
+  
+  return (
+    <button 
+      onMouseEnter={handleMouseEnter}
+      onClick={() => setShowModal(true)}
+    >
+      Open Modal
+    </button>
+  )
+}
+```
+
+### Preload on Route Prefetch
+
+Preload route components when links are hovered:
+
+```javascript
+import { preload } from '@unsetsoft/ryunixjs'
+import { Link } from '@unsetsoft/ryunixjs/router'
+
+function Navigation() {
+  return (
+    <nav>
+      <Link 
+        to="/dashboard"
+        onMouseEnter={() => preload(() => import('./pages/Dashboard'))}
+      >
+        Dashboard
+      </Link>
+    </nav>
+  )
+}
+```
+
+### Eager Preloading
+
+Preload during idle time:
+
+```javascript
+import { useEffect } from '@unsetsoft/ryunixjs'
+import { preload } from '@unsetsoft/ryunixjs'
+
+function App() {
+  useEffect(() => {
+    // Preload after initial render
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        preload(() => import('./HeavyFeature'))
+      })
+    }
+  }, [])
+  
+  return <MainContent />
+}
+```
+
+## Implementation Details
+
+The lazy component implementation tracks three states:
+
+```javascript
+const SUSPENSE_STATUS = {
+  PENDING: 'pending',
+  RESOLVED: 'resolved',
+  REJECTED: 'rejected',
+}
+```
+
+### Lazy Component Flow
+
+<CodeGroup>
+```javascript Resolved State
+// Already loaded - render synchronously
+if (status === SUSPENSE_STATUS.RESOLVED && Component) {
+  return createElement(Component, props)
+}
+```
+
+```javascript Rejected State
+// Loading failed - throw to nearest error boundary
+if (status === SUSPENSE_STATUS.REJECTED && error) {
+  throw error
+}
+```
+
+```javascript Pending State
+// Start loading if not already started
+if (!promise) {
+  promise = importFn()
+    .then((module) => {
+      Component = module.default || module
+      status = SUSPENSE_STATUS.RESOLVED
+    })
+    .catch((err) => {
+      error = err
+      status = SUSPENSE_STATUS.REJECTED
+    })
+}
+
+// Return null - Suspense will show fallback
+return null
+```
+</CodeGroup>
+
+### Suspense Detection
+
+Lazy components are marked for Suspense detection:
+
+```javascript
+LazyComponent._isLazy = true
+LazyComponent._getStatus = () => status
+```
+
+The Suspense component checks child status:
+
+```javascript
+for (const child of childArray) {
+  if (child && child.type && child.type._isLazy) {
+    const status = child.type._getStatus()
+    if (status === SUSPENSE_STATUS.PENDING) {
+      anyPending = true
+    }
+  }
+}
+```
+
+## Server-Side Rendering
+
+Lazy components work differently during SSR:
+
+<Warning>
+During server rendering, lazy components must be preloaded or they will be skipped. The server doesn't wait for dynamic imports to resolve.
+</Warning>
+
+### SSR-Safe Lazy Loading
+
+```javascript
+const Component = lazy(() => import('./Component'))
+
+// Preload before rendering on server
+if (typeof window === 'undefined') {
+  await import('./Component')
+}
+```
+
+### Suspense Streaming
+
+RyunixJS supports Suspense streaming for SSR:
+
+```javascript
+import { renderToReadableStream } from '@unsetsoft/ryunixjs/server'
+
+const stream = renderToReadableStream(
+  <Suspense fallback={<Skeleton />}>
+    <LazyComponent />
+  </Suspense>
+)
+```
+
+The stream:
+1. Sends fallback UI immediately
+2. Resolves lazy components in the background
+3. Streams updates to replace fallbacks with actual content
+
+## Performance Considerations
+
+### Avoid Lazy Loading Too Much
+
+<Warning>
+Don't lazy load every component. Small components add overhead from:
+- Additional HTTP requests
+- Module resolution overhead
+- Suspense boundary rendering
+</Warning>
+
+Only lazy load components that are:
+- Large (>50KB minified)
+- Conditionally rendered
+- Route-specific
+- Below the fold
+
+### Measure Bundle Impact
+
+Use webpack bundle analyzer:
+
+```bash
+npm install --save-dev webpack-bundle-analyzer
+```
+
+Visualize your bundle to identify heavy components worth splitting.
+
+### Optimize Loading UX
+
+Create skeleton screens that match the loaded content:
+
+```javascript
+function ProductSkeleton() {
+  return (
+    <div className="product-skeleton">
+      <div className="skeleton-image" />
+      <div className="skeleton-title" />
+      <div className="skeleton-price" />
+      <div className="skeleton-description" />
+    </div>
+  )
+}
+
+function ProductPage() {
+  return (
+    <Suspense fallback={<ProductSkeleton />}>
+      <LazyProductDetails />
+    </Suspense>
+  )
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Split by route first" icon="route">
+    Route-based splitting gives the biggest wins with minimal effort. Users only download code for pages they visit.
+  </Accordion>
+  
+  <Accordion title="Use specific fallbacks" icon="spinner">
+    Match loading states to the content being loaded. Don't use generic spinners everywhere.
+  </Accordion>
+  
+  <Accordion title="Combine with ErrorBoundary" icon="shield">
+    Always wrap Suspense in ErrorBoundary to handle failed module loading.
+  </Accordion>
+  
+  <Accordion title="Preload strategically" icon="forward">
+    Preload components users are likely to need (e.g., on link hover, during idle time).
+  </Accordion>
+  
+  <Accordion title="Avoid loading waterfalls" icon="water">
+    Don't nest lazy components unnecessarily. This creates sequential loading instead of parallel loading.
+  </Accordion>
+  
+  <Accordion title="Test loading states" icon="vial">
+    Throttle network in DevTools to test loading UI and ensure good UX on slow connections.
+  </Accordion>
+</AccordionGroup>
+
+## Testing Lazy Components
+
+Test both loading and loaded states:
+
+```javascript
+import { lazy, Suspense } from '@unsetsoft/ryunixjs'
+
+const TestComponent = lazy(() => import('./TestComponent'))
+
+function Test() {
+  return (
+    <Suspense fallback={<div data-testid="loading">Loading...</div>}>
+      <TestComponent />
+    </Suspense>
+  )
+}
+
+// Test that fallback shows initially
+expect(screen.getByTestId('loading')).toBeInTheDocument()
+
+// Wait for component to load
+await waitFor(() => {
+  expect(screen.getByTestId('component')).toBeInTheDocument()
+})
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Server Components" icon="server" href="/advanced/server-components">
+    Learn about Server Components and Server Actions
+  </Card>
+  <Card title="Performance" icon="gauge" href="/advanced/devtools-and-profiler">
+    Profile and optimize component performance
+  </Card>
+  <Card title="useTransition" icon="arrows-rotate" href="/api/hooks/useTransition">
+    Manage concurrent rendering with useTransition
+  </Card>
+  <Card title="Webpack Config" icon="gear" href="/webpack/configuration">
+    Configure webpack for optimal code splitting
+  </Card>
+</CardGroup>

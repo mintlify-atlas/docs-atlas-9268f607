@@ -1,122 +1,140 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "RyunixJS",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#2563EB"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/UnSetSoft/Ryunixjs"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/UnSetSoft/Ryunixjs"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "core/components",
+              "core/hooks",
+              "core/rendering",
+              "core/virtual-dom-and-reconciliation",
+              "core/state-and-priority"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Webpack Tooling",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "webpack/configuration",
+              "webpack/routing-ssr-ssg",
+              "webpack/cli-and-server",
+              "webpack/loaders",
+              "webpack/server-actions"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Advanced",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "advanced/devtools-and-profiler",
+              "advanced/error-boundaries",
+              "advanced/lazy-loading",
+              "advanced/server-components"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core API",
             "pages": [
-              "api-reference/introduction"
+              "api/createElement",
+              "api/render",
+              "api/server-rendering"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Hooks",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/hooks/useStore",
+              "api/hooks/useReducer",
+              "api/hooks/useEffect",
+              "api/hooks/useMemo",
+              "api/hooks/useCallback",
+              "api/hooks/useRef",
+              "api/hooks/useContext",
+              "api/hooks/useTransition",
+              "api/hooks/useRouter",
+              "api/hooks/usePersistentStore"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "api/components/Fragment",
+              "api/components/Suspense",
+              "api/components/ErrorBoundary",
+              "api/components/ServerBoundary",
+              "api/components/MDXProvider"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utilities/memo",
+              "api/utilities/lazy",
+              "api/utilities/forwardRef",
+              "api/utilities/createPortal",
+              "api/utilities/batchUpdates"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Packages",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "packages/overview"
+            ]
+          },
+          {
+            "group": "Core",
+            "pages": [
+              "packages/ryunixjs"
+            ]
+          },
+          {
+            "group": "Tooling",
+            "pages": [
+              "packages/ryunix-presets",
+              "packages/cra",
+              "packages/ryunix-devtools"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

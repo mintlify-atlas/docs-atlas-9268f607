@@ -1,0 +1,452 @@
+---
+title: Installation
+description: Learn how to install and configure RyunixJS in your projects, whether using the CLI or setting up manually.
+---
+
+## Prerequisites
+
+Before installing RyunixJS, ensure you have a compatible Node.js version:
+
+<Note>
+  RyunixJS requires **Node.js version 20, 22, or 24**. You can check your Node.js version by running `node --version` in your terminal.
+</Note>
+
+## Quick Installation with CLI
+
+The recommended way to start a new RyunixJS project is using the official CLI tool `@unsetsoft/cra`:
+
+<CodeGroup>
+  ```bash npm
+  npx @unsetsoft/cra@latest my-app
+  cd my-app
+  npm run dev
+  ```
+
+  ```bash yarn
+  yarn create @unsetsoft/cra my-app
+  cd my-app
+  yarn dev
+  ```
+
+  ```bash pnpm
+  pnpm create @unsetsoft/cra my-app
+  cd my-app
+  pnpm dev
+  ```
+</CodeGroup>
+
+The CLI will scaffold a complete project with:
+- Pre-configured build tools and webpack setup
+- Project structure with `app/` directory
+- Development server with hot module replacement
+- Linting configuration
+- Sample components and styles
+
+### CLI Options
+
+The `@unsetsoft/cra` CLI provides several options during project creation:
+
+- **Project name**: Specify your application name
+- **Template selection**: Choose from available project templates
+- **Package manager**: Select npm, yarn, or pnpm
+
+## Manual Installation
+
+If you prefer to set up RyunixJS manually or integrate it into an existing project, follow these steps:
+
+<Steps>
+  <Step title="Install the core package">
+    Install `@unsetsoft/ryunixjs` as a dependency:
+
+    <CodeGroup>
+      ```bash npm
+      npm install @unsetsoft/ryunixjs
+      ```
+
+      ```bash yarn
+      yarn add @unsetsoft/ryunixjs
+      ```
+
+      ```bash pnpm
+      pnpm add @unsetsoft/ryunixjs
+      ```
+    </CodeGroup>
+
+    <Note>
+      The current stable version is **1.2.4**. You can also install the canary release for the latest features:
+      ```bash
+      npm install @unsetsoft/ryunixjs@canary
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Configure JSX runtime">
+    RyunixJS provides its own JSX runtime. Update your `package.json` or build configuration:
+
+    **Using package.json:**
+    ```json package.json
+    {
+      "name": "my-ryunix-app",
+      "type": "module",
+      "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+      },
+      "dependencies": {
+        "@unsetsoft/ryunixjs": "^1.2.4"
+      }
+    }
+    ```
+
+    **Configure Babel for JSX:**
+
+    If you're using Babel, create a `.babelrc` or `babel.config.json`:
+
+    ```json babel.config.json
+    {
+      "presets": [
+        ["@babel/preset-env", { "targets": { "node": "current" } }],
+        ["@babel/preset-react", {
+          "runtime": "automatic",
+          "importSource": "@unsetsoft/ryunixjs"
+        }]
+      ]
+    }
+    ```
+
+    **Configure TypeScript:**
+
+    For TypeScript projects, update your `tsconfig.json`:
+
+    ```json tsconfig.json
+    {
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "@unsetsoft/ryunixjs",
+        "module": "ESNext",
+        "target": "ES2020",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "skipLibCheck": true
+      }
+    }
+    ```
+
+    <Tip>
+      The `jsxImportSource` tells the compiler to use RyunixJS's JSX runtime instead of React's.
+    </Tip>
+  </Step>
+
+  <Step title="Create your entry point">
+    Create an HTML file and a JavaScript entry point:
+
+    ```html index.html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>My RyunixJS App</title>
+    </head>
+    <body>
+      <div id="root"></div>
+      <script type="module" src="/src/main.jsx"></script>
+    </body>
+    </html>
+    ```
+
+    ```jsx src/main.jsx
+    import { render } from '@unsetsoft/ryunixjs'
+    import App from './App'
+
+    render(<App />, document.getElementById('root'))
+    ```
+
+    ```jsx src/App.jsx
+    import { useStore } from '@unsetsoft/ryunixjs'
+
+    export default function App() {
+      const [count, setCount] = useStore(0)
+
+      return (
+        <div>
+          <h1>Hello RyunixJS</h1>
+          <p>Count: {count}</p>
+          <button onClick={() => setCount(count + 1)}>
+            Increment
+          </button>
+        </div>
+      )
+    }
+    ```
+  </Step>
+
+  <Step title="Set up a build tool">
+    RyunixJS works with popular build tools. Here's an example using **Vite**:
+
+    **Install Vite:**
+    <CodeGroup>
+      ```bash npm
+      npm install --save-dev vite
+      ```
+
+      ```bash yarn
+      yarn add --dev vite
+      ```
+
+      ```bash pnpm
+      pnpm add -D vite
+      ```
+    </CodeGroup>
+
+    **Configure Vite:**
+    ```javascript vite.config.js
+    import { defineConfig } from 'vite'
+
+    export default defineConfig({
+      esbuild: {
+        jsxFactory: 'createElement',
+        jsxFragment: 'Fragment',
+        jsxInject: `import { createElement, Fragment } from '@unsetsoft/ryunixjs'`
+      }
+    })
+    ```
+
+    Or use the automatic JSX runtime:
+    ```javascript vite.config.js
+    import { defineConfig } from 'vite'
+
+    export default defineConfig({
+      esbuild: {
+        jsx: 'automatic',
+        jsxImportSource: '@unsetsoft/ryunixjs'
+      }
+    })
+    ```
+  </Step>
+</Steps>
+
+## Package Exports
+
+RyunixJS provides multiple export paths for different use cases:
+
+```javascript
+// Main export - all core functionality
+import { render, createElement, useStore } from '@unsetsoft/ryunixjs'
+
+// JSX Runtime (automatic)
+import { jsx, jsxs, Fragment } from '@unsetsoft/ryunixjs/jsx-runtime'
+
+// JSX Dev Runtime (development only)
+import { jsxDEV } from '@unsetsoft/ryunixjs/jsx-dev-runtime'
+```
+
+### Module Formats
+
+The package supports both ESM and UMD formats:
+
+- **ES Module**: `@unsetsoft/ryunixjs/dist/Ryunix.esm.js`
+- **UMD**: `@unsetsoft/ryunixjs/dist/Ryunix.umd.js`
+
+## Using with Different Bundlers
+
+### Webpack
+
+If you're using Webpack, configure Babel loader:
+
+```javascript webpack.config.js
+module.exports = {
+  module: {
+    rules: [
+      {
+        test: /\.(js|jsx)$/,
+        exclude: /node_modules/,
+        use: {
+          loader: 'babel-loader',
+          options: {
+            presets: [
+              '@babel/preset-env',
+              ['@babel/preset-react', {
+                runtime: 'automatic',
+                importSource: '@unsetsoft/ryunixjs'
+              }]
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+### Rollup
+
+For Rollup, use the Babel plugin:
+
+```javascript rollup.config.js
+import babel from '@rollup/plugin-babel'
+
+export default {
+  plugins: [
+    babel({
+      presets: [
+        '@babel/preset-env',
+        ['@babel/preset-react', {
+          runtime: 'automatic',
+          importSource: '@unsetsoft/ryunixjs'
+        }]
+      ],
+      babelHelpers: 'bundled'
+    })
+  ]
+}
+```
+
+### esbuild
+
+For esbuild, you can use the JSX configuration:
+
+```javascript
+import * as esbuild from 'esbuild'
+
+await esbuild.build({
+  entryPoints: ['src/main.jsx'],
+  bundle: true,
+  jsx: 'automatic',
+  jsxImportSource: '@unsetsoft/ryunixjs',
+  outfile: 'dist/bundle.js'
+})
+```
+
+## Using RyunixJS Presets
+
+For a more streamlined setup, you can use `@unsetsoft/ryunix-presets` which includes optimized webpack configurations:
+
+<CodeGroup>
+  ```bash npm
+  npm install --save-dev @unsetsoft/ryunix-presets
+  ```
+
+  ```bash yarn
+  yarn add --dev @unsetsoft/ryunix-presets
+  ```
+
+  ```bash pnpm
+  pnpm add -D @unsetsoft/ryunix-presets
+  ```
+</CodeGroup>
+
+Create a `ryunix.config.js` file:
+
+```javascript ryunix.config.js
+/** @type {import('@unsetsoft/ryunix-webpack/config').Setting} */
+
+const RyunixSettings = {
+  // Your configuration here
+}
+
+export default RyunixSettings
+```
+
+Then use the preset commands:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "ryunix dev",
+    "build": "ryunix build",
+    "start": "ryunix start"
+  }
+}
+```
+
+## Installing Additional Packages
+
+### DevTools
+
+Install the RyunixJS DevTools browser extension for debugging:
+
+- [Chrome Web Store](#) (Coming soon)
+- [Firefox Add-ons](#) (Coming soon)
+- [GitHub Repository](https://github.com/UnSetSoft/Ryunixjs/tree/canary/packages/ryunix-devtools)
+
+### Router (Built-in)
+
+Routing functionality is built into the core package:
+
+```javascript
+import { RouterProvider, Link, NavLink, useRouter } from '@unsetsoft/ryunixjs'
+```
+
+No additional installation required!
+
+## Verifying Your Installation
+
+To verify that RyunixJS is installed correctly, create a simple test file:
+
+```javascript test.js
+import { createElement } from '@unsetsoft/ryunixjs'
+
+const element = createElement('h1', null, 'RyunixJS is installed!')
+console.log(element)
+```
+
+Run it with Node.js:
+
+```bash
+node test.js
+```
+
+You should see an object representing the virtual DOM element.
+
+## Troubleshooting
+
+### JSX Transform Issues
+
+If you encounter errors like "React is not defined" or "createElement is not defined":
+
+1. Ensure `jsxImportSource` is set to `@unsetsoft/ryunixjs`
+2. Check that you're using the `automatic` runtime, not `classic`
+3. Clear your build cache and restart the dev server
+
+### Module Resolution Errors
+
+If imports fail:
+
+1. Verify `@unsetsoft/ryunixjs` is in your `package.json` dependencies
+2. Run `npm install` again to ensure packages are installed
+3. Check that your `package.json` has `"type": "module"` if using ES modules
+
+### Node Version Mismatch
+
+<Warning>
+  If you see engine compatibility errors, make sure you're using Node.js 20, 22, or 24:
+  
+  ```bash
+  node --version
+  ```
+  
+  Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to easily switch Node.js versions.
+</Warning>
+
+## Next Steps
+
+Now that you have RyunixJS installed, you can:
+
+<CardGroup cols={2}>
+  <Card title="Follow the Quickstart" icon="rocket" href="/quickstart">
+    Build your first app with step-by-step guidance
+  </Card>
+  
+  <Card title="Explore Core Concepts" icon="book" href="/core/components">
+    Learn about components, hooks, and rendering
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/render">
+    Dive into the complete API documentation
+  </Card>
+  
+  <Card title="Webpack Tooling" icon="gear" href="/webpack/configuration">
+    Learn about RyunixJS build system configuration
+  </Card>
+</CardGroup>

@@ -1,0 +1,734 @@
+---
+title: CLI & Server Architecture
+description: Command-line interface and dedicated development/production servers for Ryunix applications
+---
+
+The `@unsetsoft/ryunix-presets` package ships with a robust CLI and optimized server implementations for both development and production environments.
+
+## CLI Commands
+
+The Ryunix CLI is built with `yargs` and accessible via the `ryunix` command:
+
+```bash Terminal
+ryunix <command> [options]
+```
+
+### Available Commands
+
+<CardGroup cols={2}>
+  <Card title="dev" icon="code">
+    Start the development server with HMR
+  </Card>
+  <Card title="build" icon="hammer">
+    Build the application for production
+  </Card>
+  <Card title="start" icon="play">
+    Run the production server
+  </Card>
+  <Card title="lint" icon="check">
+    Lint your code with ESLint
+  </Card>
+</CardGroup>
+
+### dev
+
+Start the Webpack development server with Hot Module Replacement:
+
+```bash Terminal
+ryunix dev
+```
+
+**Features:**
+
+- Automatically finds available port (defaults to 3000, increments if busy)
+- Clears `.ryunix/cache` before starting
+- Enables HMR for instant code updates
+- Supports SSR in development mode
+- API route handling
+- Server Actions endpoint
+
+**Implementation:**
+
+```javascript bin/index.mjs:59
+const dev = {
+  command: 'dev',
+  describe: 'Run server for developer mode.',
+  handler: async (arg) => {
+    process.env.RYUNIX_MODE = 'development'
+    console.log(chalk.cyan('Starting development server, please wait...'))
+    await StartDevServer({ open: Boolean(arg.browser) })
+  },
+}
+```
+
+<Note>
+The dev server uses `setupMiddlewares` to integrate SSR, API routes, and Server Actions seamlessly.
+</Note>
+
+### build
+
+Execute the production build with dual-compiler architecture:
+
+```bash Terminal
+ryunix build
+```
+
+**Build Process:**
+
+<Steps>
+  <Step title="Clean Output">
+    Removes `.ryunix/static/` and `.ryunix/server/app/` (preserves cache)
+  </Step>
+  <Step title="Compile Client">
+    Webpack builds client bundle with minification and optimization
+  </Step>
+  <Step title="Compile Server">
+    Webpack builds server bundle for SSR/SSG (if enabled)
+  </Step>
+  <Step title="Prerender Routes">
+    Executes SSG prerendering if `config.webpack.production === true`
+  </Step>
+  <Step title="Generate Manifests">
+    Creates `sitemap.xml` and `robots.txt`
+  </Step>
+</Steps>
+
+**Output:**
+
+```bash Terminal
+✔ Compilation successful! 🎉
+○ API routes (3):
+   ✔ /api/users
+   ✔ /api/posts
+   ✔ /api/auth/login
+
+○ Prerendering routes...
+  ✔ / (125ms)
+  ✔ /about (89ms)
+  ✔ /blog (102ms)
+
+✔ Done in 12.3s
+```
+
+**Implementation:**
+
+```javascript bin/index.mjs:119
+const build = {
+  command: 'build',
+  describe: 'Run builder',
+  handler: async (arg) => {
+    process.env.RYUNIX_MODE = 'production'
+
+    // Clean build output
+    const buildRoot = resolveApp(process.cwd(), defaultSettings.buildDir)
+    clean(join(buildRoot, 'static'))
+    clean(join(buildRoot, 'server', 'app'))
+
+    compiler.run(async (err, stats) => {
+      if (err || stats.hasErrors()) {
+        // Error handling
+      }
+
+      // SSG Prerender
+      if (defaultSettings.webpack.production) {
+        await Prerender(defaultSettings.buildDir)
+      }
+
+      // Success
+      logger.info(`${chalk.green('✔')} Compilation successful! 🎉`)
+      compiler.close(() => process.exit(0))
+    })
+  },
+}
+```
+
+<Warning>
+The build command requires a clean working directory. Incremental builds preserve the cache but rebuild static assets.
+</Warning>
+
+### start
+
+Launch the native Node.js production server:
+
+```bash Terminal
+ryunix start
+```
+
+**Requirements:**
+
+- Pre-existing `.ryunix/static` build directory
+- Must run `ryunix build` first
+
+**Server Info Display:**
+
+```bash Terminal
+╭───────────────────────────────────────────╮
+│                                           │
+│         Production Server                 │
+│                                           │
+│   <Ryunix/> v1.2.4                        │
+│                                           │
+│   Ready at: http://localhost:3000/        │
+│   Mode:     production                    │
+│                                           │
+╰───────────────────────────────────────────╯
+```
+
+**Implementation:**
+
+```javascript bin/index.mjs:80
+const prod = {
+  command: 'start',
+  describe: 'Run server for production mode. Requiere .ryunix/static',
+  handler: async (arg) => {
+    process.env.RYUNIX_MODE = 'production'
+    
+    if (!fs.existsSync(join(process.cwd(), config.buildDir, 'static'))) {
+      logger.error('You need build first!')
+      return
+    }
+
+    server.listen(config.port, () => {
+      console.log(boxen(/* Server info box */))
+    })
+  },
+}
+```
+
+### lint
+
+Run ESLint against your codebase:
+
+```bash Terminal
+ryunix lint
+```
+
+**Auto-fix Mode:**
+
+```bash Terminal
+ryunix lint --fix
+# or
+ryunix lint -f
+```
+
+**Configuration:**
+
+Uses the internal ESLint config from `eslint.config.mjs` with these defaults:
+
+- Files: `['**/*.ryx', '**/*.js', '**/*.jsx']`
+- Excludes: `node_modules`, `**/*.mdx`, `**/*.md`
+- Rules: React best practices and Ryunix-specific patterns
+
+**Implementation:**
+
+```javascript bin/index.mjs:27
+const lint = {
+  command: 'lint',
+  describe: 'Lint code',
+  builder: {
+    fix: { type: 'boolean', default: false },
+  },
+  handler: async (arg) => {
+    const eslint = new ESLint({
+      cwd: process.cwd(),
+      overrideConfigFile: true,
+      overrideConfig: eslintConfig[0],
+      fix: arg.fix,
+    })
+
+    const results = await eslint.lintFiles(defaultSettings.eslint.files)
+    await ESLint.outputFixes(results)
+
+    const formatter = await eslint.loadFormatter('stylish')
+    console.log(formatter.format(results))
+  },
+}
+```
+
+### customHtml (Deprecated)
+
+Extract the default HTML template for customization:
+
+```bash Terminal
+ryunix customHtml
+```
+
+Copies `template/index.html` to `public/index.html`.
+
+<Tip>
+After extraction, set `legacy.template: 'public/index.html'` in `ryunix.config.js` to use your custom template.
+</Tip>
+
+## Development Server
+
+The development server wraps `webpack-dev-server` with custom middleware.
+
+### Architecture
+
+**File:** `bin/dev.server.mjs`
+
+**Features:**
+
+- **HMR Runtime Injection**: Hot Module Replacement for instant updates
+- **Port Auto-Detection**: Uses `checkPortInUse()` via `net.createServer`
+- **Dual-Compiler Support**: Orchestrates both client and server configs
+- **Environment Setup**: Sets `RYUNIX_MODE=development`
+
+### Middleware Stack
+
+The dev server registers three middleware layers in sequence:
+
+<Steps>
+  <Step title="Server Actions Handler">
+    Intercepts `POST /_ryunix/action` for RPC execution
+  </Step>
+  <Step title="API Routes Handler">
+    Pipes `/api/*` requests through generated API handlers
+  </Step>
+  <Step title="SSR Handler">
+    Renders React to HTML for `text/html` requests
+  </Step>
+</Steps>
+
+#### 1. Server Actions Middleware
+
+```javascript webpack.config.mjs:401
+devServer.app.use(async (req, res, next) => {
+  if (req.method === 'POST' && req.url === '/_ryunix/action') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      const { actionId, args } = JSON.parse(body);
+      const action = global.__RYUNIX_SERVER_ACTIONS__?.[actionId];
+      
+      if (!action) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: `Server Action ${actionId} not found` }));
+      }
+      
+      const result = await action(...args);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    });
+    return;
+  }
+  next();
+});
+```
+
+**Flow:**
+
+1. Client calls Server Action: `await myAction(arg1, arg2)`
+2. Proxy sends `POST /_ryunix/action` with `{ actionId, args }`
+3. Server looks up function in `global.__RYUNIX_SERVER_ACTIONS__`
+4. Executes function and returns JSON result
+
+#### 2. API Routes Middleware
+
+```javascript webpack.config.mjs:431
+devServer.app.use(async (req, res, next) => {
+  const apiRootPath = resolveApp(dir, `${config.buildDir}/server/api`)
+  const handled = await handleApiRequest(req, res, apiRootPath)
+  if (!handled) {
+    next()
+  }
+})
+```
+
+**Request Mapping:**
+
+```bash
+GET  /api/users       → .ryunix/server/api/users/route.js → GET(req, res)
+POST /api/posts/123   → .ryunix/server/api/posts/[id]/route.js → POST(req, res)
+```
+
+#### 3. SSR Middleware
+
+```javascript webpack.config.mjs:443
+devServer.app.use(async (req, res, next) => {
+  if (config.ssr) {
+    const handled = await renderDevRoute(req, res, devServer, dir, config)
+    if (handled) return
+  }
+  next()
+})
+```
+
+See [Routing, SSR & SSG](/webpack/routing-ssr-ssg#development-ssr) for SSR implementation details.
+
+### Port Resolution
+
+Automatically increments port if default is occupied:
+
+```javascript
+const checkPortInUse = (port) => {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(true))
+    server.once('listening', () => {
+      server.close()
+      resolve(false)
+    })
+    server.listen(port)
+  })
+}
+
+let port = config.port || 3000
+while (await checkPortInUse(port)) {
+  port++
+}
+```
+
+**Console Output:**
+
+```bash Terminal
+⚠ Port 3000 is in use, trying 3001...
+✔ Development server started on http://localhost:3001
+```
+
+### DevServer Configuration
+
+```javascript webpack.config.mjs:375
+devServer: {
+  watchFiles: ['src/**/*', 'app/**/*'],
+  devMiddleware: {
+    writeToDisk: (filePath) => {
+      return filePath.includes('/server/') || filePath.includes('\\server\\')
+    },
+  },
+  hot: true,
+  historyApiFallback: {
+    index: '/',
+    disableDotRule: true,
+  },
+  liveReload: false,
+  headers: {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': '*',
+    'Access-Control-Allow-Headers': '*',
+  },
+  port: config.port,
+  proxy: config.proxy,
+}
+```
+
+<Note>
+`writeToDisk` ensures server bundles are written to the file system for SSR, while client assets remain in memory.
+</Note>
+
+## Production Server
+
+The production server is a highly optimized native `http` server designed for maximum performance.
+
+**File:** `bin/prod.server.mjs`
+
+### Features
+
+<CardGroup cols={2}>
+  <Card title="In-Memory Cache" icon="memory">
+    50MB LRU cache for static assets to minimize disk I/O
+  </Card>
+  <Card title="Dynamic Compression" icon="compress">
+    Brotli (quality 6) and Gzip compression with cache storage
+  </Card>
+  <Card title="HTTP Range Support" icon="video">
+    206 Partial Content for streaming media files
+  </Card>
+  <Card title="ETag Validation" icon="fingerprint">
+    MD5 hashing for 304 Not Modified responses
+  </Card>
+</CardGroup>
+
+### File Cache Implementation
+
+```javascript bin/prod.server.mjs:56
+const fileCache = new Map()
+const MAX_CACHE_SIZE = 50 * 1024 * 1024 // 50MB
+let currentCacheSize = 0
+```
+
+**Cache Entry Structure:**
+
+```javascript
+{
+  content: Buffer,           // Raw file content
+  etag: String,              // MD5 hash
+  compressed: {
+    gzip: Buffer,            // Gzipped content
+    br: Buffer,              // Brotli compressed
+  },
+  size: Number,              // Content length
+  mtime: Number,             // Last modified time
+}
+```
+
+**Cache Eviction:**
+
+When cache exceeds 50MB, oldest entries are removed (LRU):
+
+```javascript
+if (currentCacheSize > MAX_CACHE_SIZE) {
+  const entries = Array.from(fileCache.entries())
+    .sort((a, b) => a[1].mtime - b[1].mtime)
+  
+  while (currentCacheSize > MAX_CACHE_SIZE * 0.8) {
+    const [key, entry] = entries.shift()
+    fileCache.delete(key)
+    currentCacheSize -= entry.size
+  }
+}
+```
+
+### Compression Strategy
+
+The server detects `Accept-Encoding` and compresses on the fly:
+
+```javascript bin/prod.server.mjs:96
+const getAcceptedEncoding = (headers) => {
+  const encoding = headers['accept-encoding'] || ''
+  if (encoding.includes('br')) return 'br'
+  if (encoding.includes('gzip')) return 'gzip'
+  return null
+}
+```
+
+**Compression Configuration:**
+
+- **Brotli**: Quality 6 (balance of speed and compression)
+- **Gzip**: Default level
+- **Cache**: Compressed buffers stored alongside raw content
+
+**Compressible MIME Types:**
+
+```javascript
+const isCompressible = (mimeType) => {
+  return mimeType.startsWith('text/') ||
+    mimeType.includes('javascript') ||
+    mimeType.includes('json') ||
+    mimeType.includes('xml') ||
+    mimeType.includes('css')
+}
+```
+
+### HTTP Range Requests
+
+Full support for `Range` headers enables streaming of video/audio:
+
+```javascript
+if (req.headers.range) {
+  const parts = req.headers.range.replace(/bytes=/, '').split('-')
+  const start = parseInt(parts[0], 10)
+  const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1
+  
+  res.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+    'Accept-Ranges': 'bytes',
+    'Content-Length': end - start + 1,
+    'Content-Type': getMimeType(filePath),
+  })
+  
+  const stream = createReadStream(filePath, { start, end })
+  await pipeline(stream, res)
+}
+```
+
+**Use Case:**
+
+```html
+<video controls>
+  <source src="/media/demo.mp4" type="video/mp4" />
+</video>
+```
+
+Browser automatically sends `Range` headers for seeking and partial downloads.
+
+### ETag & 304 Responses
+
+Generate ETags from file content for cache validation:
+
+```javascript bin/prod.server.mjs:90
+const generateETag = (content) => {
+  return createHash('md5').update(content).digest('hex')
+}
+```
+
+**Conditional Request Handling:**
+
+```javascript
+const etag = generateETag(content)
+
+if (req.headers['if-none-match'] === etag) {
+  res.writeHead(304)
+  res.end()
+  return
+}
+
+res.setHeader('ETag', etag)
+```
+
+**Browser Caching Headers:**
+
+```javascript
+res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+```
+
+### API Route Handling
+
+API requests are handled before static file serving:
+
+```javascript
+if (req.url.startsWith('/api/')) {
+  const apiRootPath = path.join(process.cwd(), config.buildDir, 'server', 'api')
+  const handled = await handleApiRequest(req, res, apiRootPath)
+  if (handled) return
+}
+```
+
+### SPA Fallback
+
+Unmatched routes fall back to `index.html` for client-side routing:
+
+```javascript
+if (!fs.existsSync(filePath) || !stats.isFile()) {
+  // Serve cached index.html for SPA routing
+  const indexPath = path.join(staticDir, 'index.html')
+  if (fs.existsSync(indexPath)) {
+    serveFile(indexPath, res)
+    return
+  }
+}
+```
+
+### Security: Path Traversal Protection
+
+```javascript bin/prod.server.mjs:72
+const validatePath = (requestPath, rootDir) => {
+  const normalizedPath = path.normalize(requestPath)
+  const resolvedPath = path.resolve(rootDir, normalizedPath.slice(1))
+
+  if (!resolvedPath.startsWith(rootDir)) {
+    return null // Reject traversal attempts
+  }
+
+  return resolvedPath
+}
+```
+
+**Blocks:**
+
+- `GET /../../../etc/passwd`
+- `GET /..%2F..%2Fetc%2Fpasswd`
+- Any path outside `.ryunix/static/`
+
+### MIME Type Dictionary
+
+Comprehensive MIME type mapping:
+
+```javascript bin/prod.server.mjs:15
+const MIME_TYPES = {
+  '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.css': 'text/css',
+  '.html': 'text/html',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.mp4': 'video/mp4',
+  '.pdf': 'application/pdf',
+  // ... 40+ types
+}
+```
+
+## Environment Variables
+
+### Runtime Environment
+
+The CLI sets `process.env.RYUNIX_MODE`:
+
+- `development` - Set by `ryunix dev`
+- `production` - Set by `ryunix build` and `ryunix start`
+
+### Webpack DefinePlugin
+
+Compile-time constants injected by Webpack:
+
+```javascript
+'process.env.RYUNIX_SSR': JSON.stringify(config.ssr)
+'process.env.RYUNIX_DEBUG': JSON.stringify(config.debug)
+'process.env.RYUNIX_IS_SERVER': JSON.stringify(isServer)
+```
+
+## Performance Benchmarks
+
+**Production Server (HTTP benchmarks):**
+
+| Metric | Value |
+|--------|-------|
+| Requests/sec (static) | ~25,000 |
+| Latency (cached) | Less than 1ms |
+| Latency (uncached) | 3-8ms |
+| Memory usage | 50-150MB |
+| Compression ratio (Brotli) | ~70% |
+
+<Note>
+Benchmarks measured with `autocannon` on a 4-core machine serving a typical SPA.
+</Note>
+
+## Deployment
+
+### Docker Example
+
+```dockerfile Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
+```
+
+### Process Manager (PM2)
+
+```bash Terminal
+pm2 start "npm start" --name ryunix-app
+pm2 save
+pm2 startup
+```
+
+### Reverse Proxy (Nginx)
+
+```nginx nginx.conf
+server {
+  listen 80;
+  server_name example.com;
+
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+  }
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Webpack Configuration" icon="gear" href="/webpack/configuration">
+    Deep dive into Webpack compiler setup
+  </Card>
+  <Card title="Routing, SSR & SSG" icon="route" href="/webpack/routing-ssr-ssg">
+    How routing plugins integrate with servers
+  </Card>
+</CardGroup>

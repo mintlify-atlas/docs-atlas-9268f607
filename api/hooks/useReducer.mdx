@@ -1,0 +1,300 @@
+---
+title: 'useReducer'
+description: 'Advanced state management hook with reducer pattern for complex state logic'
+icon: 'arrows-rotate'
+---
+
+## Overview
+
+`useReducer` is RyunixJS's hook for managing complex state logic using the reducer pattern. It's ideal when you have multiple state transitions or when the next state depends on the previous one in non-trivial ways.
+
+## Signature
+
+```typescript
+function useReducer<S, A>(
+  reducer: (state: S, action: A) => S,
+  initialState: S,
+  init?: (initial: S) => S
+): [S, (action: A) => void]
+```
+
+## Parameters
+
+<ParamField path="reducer" type="(state: S, action: A) => S" required>
+  A pure function that takes the current state and an action, and returns the new state.
+
+  ```javascript
+  const reducer = (state, action) => {
+    switch (action.type) {
+      case 'increment':
+        return { count: state.count + 1 }
+      case 'decrement':
+        return { count: state.count - 1 }
+      default:
+        return state
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField path="initialState" type="S" required>
+  The initial state value used when the component first renders.
+</ParamField>
+
+<ParamField path="init" type="(initial: S) => S">
+  Optional initialization function. If provided, the initial state will be set to `init(initialState)`. Useful for lazy initialization or resetting state.
+</ParamField>
+
+## Returns
+
+Returns a tuple with two elements:
+
+<ResponseField name="[0]" type="S">
+  The current state value
+</ResponseField>
+
+<ResponseField name="[1]" type="(action: A) => void">
+  The dispatch function to trigger state updates by sending actions to the reducer
+</ResponseField>
+
+## Usage
+
+### Basic Counter Example
+
+```jsx
+import { useReducer } from '@ryunixjs/core'
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'increment':
+      return { count: state.count + 1 }
+    case 'decrement':
+      return { count: state.count - 1 }
+    case 'reset':
+      return { count: 0 }
+    default:
+      return state
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(reducer, { count: 0 })
+
+  return (
+    <div>
+      <p>Count: {state.count}</p>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <button onClick={() => dispatch({ type: 'reset' })}>Reset</button>
+    </div>
+  )
+}
+```
+
+### Complex State Management
+
+```jsx
+import { useReducer } from '@ryunixjs/core'
+
+const initialState = {
+  todos: [],
+  filter: 'all'
+}
+
+const todoReducer = (state, action) => {
+  switch (action.type) {
+    case 'ADD_TODO':
+      return {
+        ...state,
+        todos: [...state.todos, {
+          id: Date.now(),
+          text: action.text,
+          completed: false
+        }]
+      }
+    case 'TOGGLE_TODO':
+      return {
+        ...state,
+        todos: state.todos.map(todo =>
+          todo.id === action.id 
+            ? { ...todo, completed: !todo.completed }
+            : todo
+        )
+      }
+    case 'DELETE_TODO':
+      return {
+        ...state,
+        todos: state.todos.filter(todo => todo.id !== action.id)
+      }
+    case 'SET_FILTER':
+      return {
+        ...state,
+        filter: action.filter
+      }
+    default:
+      return state
+  }
+}
+
+function TodoApp() {
+  const [state, dispatch] = useReducer(todoReducer, initialState)
+
+  const addTodo = (text) => {
+    dispatch({ type: 'ADD_TODO', text })
+  }
+
+  const toggleTodo = (id) => {
+    dispatch({ type: 'TOGGLE_TODO', id })
+  }
+
+  return (
+    <div>
+      {/* UI implementation */}
+    </div>
+  )
+}
+```
+
+### Lazy Initialization
+
+Use the `init` function for expensive initial state calculations:
+
+```jsx
+import { useReducer } from '@ryunixjs/core'
+
+const init = (initialCount) => {
+  // Expensive computation
+  return { count: initialCount * 10 }
+}
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'increment':
+      return { count: state.count + 1 }
+    case 'decrement':
+      return { count: state.count - 1 }
+    case 'reset':
+      return init(action.payload)
+    default:
+      return state
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(reducer, 5, init)
+  // Initial state will be { count: 50 }
+
+  return (
+    <div>
+      <p>Count: {state.count}</p>
+      <button onClick={() => dispatch({ type: 'reset', payload: 5 })}>
+        Reset
+      </button>
+    </div>
+  )
+}
+```
+
+## Error Handling
+
+The reducer includes built-in error handling in development mode:
+
+```javascript
+if (oldHook?.queue) {
+  oldHook.queue.forEach((action) => {
+    try {
+      hook.state = reducer(hook.state, action)
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error in reducer:', error)
+      }
+    }
+  })
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:68-78`
+
+<Note>
+  Reducer errors are logged in development but silently handled in production to prevent crashes.
+</Note>
+
+## Dispatch Validation
+
+Dispatching `undefined` actions triggers a warning in development:
+
+```javascript
+const dispatch = (action) => {
+  if (action === undefined) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('dispatch called with undefined action')
+    }
+    return
+  }
+  // ... dispatch logic
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:81-86`
+
+## SSR Behavior
+
+During server-side rendering:
+
+```javascript
+if (state.isServerRendering) {
+  return [init ? init(initialState) : initialState, () => {}]
+}
+```
+
+<Warning>
+  On the server, `useReducer` returns the initial state and a no-op dispatch function. Actions dispatched during SSR are ignored.
+</Warning>
+
+## When to Use useReducer vs useStore
+
+<CardGroup cols={2}>
+  <Card title="Use useReducer when:" icon="check">
+    - You have complex state logic with multiple sub-values
+    - Next state depends on previous state in complex ways
+    - You want to centralize state update logic
+    - You need predictable state transitions
+  </Card>
+  <Card title="Use useStore when:" icon="database">
+    - State updates are simple and independent
+    - You want a simpler API
+    - State is a single primitive value
+    - You don't need action-based updates
+  </Card>
+</CardGroup>
+
+## Implementation Details
+
+The hook uses a fiber-based architecture with update queuing:
+
+```javascript
+const hook = {
+  hookID: hookIndex,
+  type: RYUNIX_TYPES.RYUNIX_STORE,
+  state: oldHook ? oldHook.state : init ? init(initialState) : initialState,
+  queue: [],
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:61-66`
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useStore" icon="database" href="./useStore">
+    Simpler state management for basic use cases
+  </Card>
+  <Card title="useTransition" icon="hourglass" href="./useTransition">
+    Mark state updates as non-urgent transitions
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useStore](/api/hooks/useStore)
+- See the examples above for state management patterns

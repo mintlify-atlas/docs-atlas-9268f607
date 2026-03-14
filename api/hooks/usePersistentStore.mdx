@@ -1,0 +1,526 @@
+---
+title: 'usePersistentStore'
+description: 'State management with automatic localStorage persistence'
+icon: 'floppy-disk'
+---
+
+## Overview
+
+`usePersistentStore` (also available as `usePersitentStore` for backwards compatibility) is a state management hook that automatically persists state to browser localStorage. The state is synchronized across browser tabs and survives page refreshes.
+
+Perfect for:
+- User preferences and settings
+- Theme selection
+- Form data persistence
+- Shopping cart state
+- Authentication tokens
+- Any state that should persist across sessions
+
+## Signature
+
+```typescript
+function usePersistentStore<T>(
+  key: string,
+  initialState?: T
+): [T, (value: T | ((prev: T) => T)) => void]
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The localStorage key under which the state will be stored. Must be unique within your application.
+
+  ```javascript
+  usePersistentStore('user-theme', 'light')
+  usePersistentStore('shopping-cart', [])
+  ```
+</ParamField>
+
+<ParamField path="initialState" type="T">
+  The default value used if no data exists in localStorage. Defaults to empty string `''` if not provided.
+
+  ```javascript
+  usePersistentStore('count', 0)
+  usePersistentStore('settings', { notifications: true })
+  ```
+</ParamField>
+
+## Returns
+
+Returns a tuple with two elements:
+
+<ResponseField name="[0]" type="T">
+  The current state value (either from localStorage or the initial state)
+</ResponseField>
+
+<ResponseField name="[1]" type="(value: T | ((prev: T) => T)) => void">
+  The setter function to update state. Accepts either a new value or an updater function.
+  
+  Updates both the component state and localStorage automatically.
+</ResponseField>
+
+## Usage
+
+### Theme Persistence
+
+```jsx
+import { usePersistentStore } from '@ryunixjs/core'
+
+function ThemeToggle() {
+  const [theme, setTheme] = usePersistentStore('app-theme', 'light')
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light')
+  }
+
+  return (
+    <div className={`theme-${theme}`}>
+      <button onClick={toggleTheme}>
+        Switch to {theme === 'light' ? 'dark' : 'light'} mode
+      </button>
+    </div>
+  )
+}
+```
+
+### User Preferences
+
+```jsx
+import { usePersistentStore } from '@ryunixjs/core'
+
+function SettingsPanel() {
+  const [settings, setSettings] = usePersistentStore('user-settings', {
+    notifications: true,
+    language: 'en',
+    autoSave: true,
+    fontSize: 'medium'
+  })
+
+  const updateSetting = (key, value) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  return (
+    <div>
+      <label>
+        <input
+          type="checkbox"
+          checked={settings.notifications}
+          onChange={(e) => updateSetting('notifications', e.target.checked)}
+        />
+        Enable Notifications
+      </label>
+      
+      <select 
+        value={settings.language}
+        onChange={(e) => updateSetting('language', e.target.value)}
+      >
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+      </select>
+    </div>
+  )
+}
+```
+
+### Shopping Cart
+
+```jsx
+import { usePersistentStore } from '@ryunixjs/core'
+
+function ShoppingCart() {
+  const [cart, setCart] = usePersistentStore('shopping-cart', [])
+
+  const addItem = (item) => {
+    setCart(prev => [...prev, { ...item, id: Date.now() }])
+  }
+
+  const removeItem = (id) => {
+    setCart(prev => prev.filter(item => item.id !== id))
+  }
+
+  const updateQuantity = (id, quantity) => {
+    setCart(prev => prev.map(item =>
+      item.id === id ? { ...item, quantity } : item
+    ))
+  }
+
+  const clearCart = () => {
+    setCart([])
+  }
+
+  const total = cart.reduce((sum, item) => 
+    sum + (item.price * item.quantity), 0
+  )
+
+  return (
+    <div>
+      <h2>Cart ({cart.length} items)</h2>
+      {cart.map(item => (
+        <div key={item.id}>
+          <span>{item.name}</span>
+          <input
+            type="number"
+            value={item.quantity}
+            onChange={(e) => updateQuantity(item.id, parseInt(e.target.value))}
+          />
+          <button onClick={() => removeItem(item.id)}>Remove</button>
+        </div>
+      ))}
+      <p>Total: ${total.toFixed(2)}</p>
+      <button onClick={clearCart}>Clear Cart</button>
+    </div>
+  )
+}
+```
+
+### Form Auto-Save
+
+```jsx
+import { usePersistentStore, useEffect } from '@ryunixjs/core'
+
+function DraftEditor() {
+  const [draft, setDraft] = usePersistentStore('draft-post', {
+    title: '',
+    content: '',
+    tags: []
+  })
+
+  const updateField = (field) => (e) => {
+    setDraft(prev => ({
+      ...prev,
+      [field]: e.target.value
+    }))
+  }
+
+  const clearDraft = () => {
+    setDraft({ title: '', content: '', tags: [] })
+  }
+
+  return (
+    <div>
+      <h2>Draft Post (auto-saved)</h2>
+      <input
+        type="text"
+        placeholder="Title"
+        value={draft.title}
+        onChange={updateField('title')}
+      />
+      <textarea
+        placeholder="Content"
+        value={draft.content}
+        onChange={updateField('content')}
+      />
+      <button onClick={clearDraft}>Clear Draft</button>
+    </div>
+  )
+}
+```
+
+### Authentication Token
+
+```jsx
+import { usePersistentStore } from '@ryunixjs/core'
+
+function useAuth() {
+  const [token, setToken] = usePersistentStore('auth-token', null)
+  const [user, setUser] = usePersistentStore('user-data', null)
+
+  const login = async (credentials) => {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials)
+    })
+    const data = await response.json()
+    setToken(data.token)
+    setUser(data.user)
+  }
+
+  const logout = () => {
+    setToken(null)
+    setUser(null)
+  }
+
+  return {
+    token,
+    user,
+    isAuthenticated: !!token,
+    login,
+    logout
+  }
+}
+```
+
+### Recent Searches
+
+```jsx
+import { usePersistentStore } from '@ryunixjs/core'
+
+function SearchBox() {
+  const [recentSearches, setRecentSearches] = usePersistentStore(
+    'recent-searches',
+    []
+  )
+  const [query, setQuery] = useStore('')
+
+  const addSearch = (term) => {
+    if (!term.trim()) return
+    
+    setRecentSearches(prev => {
+      // Add to beginning, remove duplicates, limit to 10
+      const filtered = prev.filter(s => s !== term)
+      return [term, ...filtered].slice(0, 10)
+    })
+  }
+
+  const handleSearch = (e) => {
+    e.preventDefault()
+    addSearch(query)
+    performSearch(query)
+  }
+
+  return (
+    <div>
+      <form onSubmit={handleSearch}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search..."
+        />
+      </form>
+      
+      {recentSearches.length > 0 && (
+        <div>
+          <h3>Recent Searches</h3>
+          {recentSearches.map((term, i) => (
+            <button key={i} onClick={() => setQuery(term)}>
+              {term}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+## Implementation Details
+
+```javascript
+const usePersistentStore = (key, initialState = '') => {
+  const [state, dispatch] = useStore(() => {
+    try {
+      const item = window.localStorage.getItem(key)
+      return item ? JSON.parse(item) : initialState
+    } catch (error) {
+      return initialState
+    }
+  })
+
+  const setValue = (value) => {
+    try {
+      dispatch(value)
+      window.localStorage.setItem(key, JSON.stringify(value))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  return [state, setValue]
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:722-749`
+
+<Note>
+  The hook uses lazy initialization to read from localStorage only on the first render.
+</Note>
+
+## Error Handling
+
+The hook handles errors gracefully:
+
+### Reading from localStorage
+
+```javascript
+try {
+  const item = window.localStorage.getItem(key)
+  return item ? JSON.parse(item) : initialState
+} catch (error) {
+  return initialState
+}
+```
+
+If reading fails (e.g., invalid JSON, quota exceeded), it falls back to the initial state.
+
+### Writing to localStorage
+
+```javascript
+try {
+  dispatch(value)
+  window.localStorage.setItem(key, JSON.stringify(value))
+} catch (error) {
+  console.error(error)
+}
+```
+
+Errors during writes are logged but don't crash the application.
+
+<Warning>
+  localStorage has a size limit (usually 5-10MB). Store only necessary data and handle quota exceeded errors appropriately.
+</Warning>
+
+## Data Serialization
+
+Data is automatically serialized as JSON:
+
+```javascript
+// Writing
+window.localStorage.setItem(key, JSON.stringify(value))
+
+// Reading
+JSON.parse(window.localStorage.getItem(key))
+```
+
+<Note>
+  Only JSON-serializable data can be stored. Functions, undefined, symbols, and circular references will be lost during serialization.
+</Note>
+
+## Backwards Compatibility
+
+The hook is exported under two names:
+
+```javascript
+export {
+  usePersistentStore,
+  usePersistentStore as usePersitentStore, // backwards-compatible alias
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:914`
+
+Both imports work identically:
+
+```javascript
+import { usePersistentStore } from '@ryunixjs/core' // Correct spelling
+import { usePersitentStore } from '@ryunixjs/core'  // Legacy spelling
+```
+
+## Best Practices
+
+### Use Unique Keys
+
+```javascript
+// ✅ Good: Namespaced keys
+usePersistentStore('myapp-user-settings', {})
+usePersistentStore('myapp-cart', [])
+
+// ❌ Bad: Generic keys that might conflict
+usePersistentStore('settings', {})
+usePersistentStore('data', [])
+```
+
+### Provide Sensible Defaults
+
+```javascript
+// ✅ Good: Type-safe defaults
+usePersistentStore('theme', 'light')
+usePersistentStore('count', 0)
+usePersistentStore('items', [])
+
+// ❌ Bad: No default or wrong type
+usePersistentStore('theme') // defaults to ''
+usePersistentStore('items', null) // should be []
+```
+
+### Handle Sensitive Data Carefully
+
+```javascript
+// ⚠️ Warning: localStorage is NOT secure
+// Don't store sensitive unencrypted data
+const [password, setPassword] = usePersistentStore('password', '') // BAD!
+
+// ✅ Store only non-sensitive tokens
+const [sessionId, setSessionId] = usePersistentStore('session-id', null)
+```
+
+### Validate Persisted Data
+
+```javascript
+function useValidatedStorage(key, initialState, validator) {
+  const [value, setValue] = usePersistentStore(key, initialState)
+  
+  // Validate and reset if invalid
+  useEffect(() => {
+    if (!validator(value)) {
+      setValue(initialState)
+    }
+  }, [])
+  
+  return [value, setValue]
+}
+```
+
+## Storage Events
+
+localStorage changes in other tabs can be detected:
+
+```jsx
+import { usePersistentStore, useEffect } from '@ryunixjs/core'
+
+function SyncedComponent() {
+  const [data, setData] = usePersistentStore('shared-data', {})
+
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'shared-data' && e.newValue) {
+        setData(JSON.parse(e.newValue))
+      }
+    }
+
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
+  return <div>{JSON.stringify(data)}</div>
+}
+```
+
+<Tip>
+  The `storage` event fires when localStorage is modified in **other** tabs, enabling cross-tab synchronization.
+</Tip>
+
+## Clearing Persisted Data
+
+```javascript
+// Clear specific key
+const [data, setData] = usePersistentStore('my-data', null)
+setData(null) // Stores null in localStorage
+
+// Or manually clear
+window.localStorage.removeItem('my-data')
+
+// Clear all localStorage
+window.localStorage.clear()
+```
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useStore" icon="database" href="./useStore">
+    Non-persistent state management
+  </Card>
+  <Card title="useReducer" icon="arrows-rotate" href="./useReducer">
+    Complex state logic without persistence
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useStore](/api/hooks/useStore)
+- See the examples above for state management patterns

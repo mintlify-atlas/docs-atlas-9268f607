@@ -1,0 +1,530 @@
+---
+title: "Virtual DOM & Reconciliation"
+description: "Fiber-based concurrent rendering architecture with interruptible work units"
+icon: "diagram-project"
+---
+
+The Ryunix core employs a Fiber-based, concurrent rendering architecture, splitting rendering work into interruptible units. This prevents blocking the main thread during deep tree updates.
+
+## Fiber Architecture
+
+A **fiber** is a JavaScript object representing a unit of work. Each fiber corresponds to a component or DOM element in the tree.
+
+### Fiber Structure
+
+```typescript
+interface Fiber {
+  type: string | Function | Symbol;  // Component type
+  props: object;                     // Component props
+  dom: HTMLElement | null;           // DOM node reference
+  parent: Fiber | null;              // Parent fiber
+  child: Fiber | null;               // First child fiber
+  sibling: Fiber | null;             // Next sibling fiber
+  alternate: Fiber | null;           // Previous version (for diffing)
+  effectTag: string;                 // PLACEMENT, UPDATE, DELETION, HYDRATE
+  hooks: Array;                      // Hook state
+  key: any;                          // Reconciliation key
+  index: number;                     // Position in children array
+}
+```
+
+### Fiber Tree Example
+
+```jsx
+const App = () => (
+  <div>
+    <Header />
+    <Main>
+      <Article />
+      <Sidebar />
+    </Main>
+  </div>
+);
+```
+
+Fiber tree structure:
+
+```
+App (root)
+  └─ child → div
+      └─ child → Header
+          └─ sibling → Main
+              └─ child → Article
+                  └─ sibling → Sidebar
+```
+
+<Note>
+  Each fiber has a **single child** (first child) and a **single sibling** (next sibling), forming a linked list structure that's easy to traverse.
+</Note>
+
+## Reconciliation
+
+The reconciler (`reconciler.js`) compares the current virtual tree with new elements to determine what needs to be created, updated, or deleted.
+
+### reconcileChildren()
+
+The core reconciliation function that processes new elements against old fibers.
+
+**Source Reference:** `/packages/core/src/lib/reconciler.js:6`
+
+<Steps>
+  <Step title="Build Old Fiber Map">
+    Creates an O(1) `Map` of old fibers keyed by their explicit `key` prop or positional index.
+    
+    ```javascript
+    const oldFiberMap = new Map();
+    let oldFiber = wipFiber.alternate?.child;
+    let position = 0;
+
+    while (oldFiber) {
+      const key = oldFiber.key ?? `__index_${position}__`;
+      oldFiberMap.set(key, oldFiber);
+      oldFiber = oldFiber.sibling;
+      position++;
+    }
+    ```
+  </Step>
+  
+  <Step title="Process New Elements">
+    Iterates through new elements, matching them against old fibers from the map.
+    
+    ```javascript
+    while (index < elements.length) {
+      const element = elements[index];
+      const key = element.key ?? `__index_${index}__`;
+      const matchedFiber = oldFiberMap.get(key);
+      
+      const sameType = matchedFiber && element.type === matchedFiber.type;
+      // ...
+    }
+    ```
+  </Step>
+  
+  <Step title="Mark Effect Tags">
+    Assigns effect tags based on the comparison:
+    - `UPDATE`: Same type, update props
+    - `PLACEMENT`: New element, insert into DOM
+    - `HYDRATE`: Existing SSR node, attach interactivity
+    - `DELETION`: Old fiber not matched, remove from DOM
+  </Step>
+  
+  <Step title="Link Fibers">
+    Connects new fibers with child/sibling relationships.
+    
+    ```javascript
+    if (isFirstChild) {
+      wipFiber.child = newFiber;
+    } else {
+      prevSibling.sibling = newFiber;
+    }
+    ```
+  </Step>
+  
+  <Step title="Delete Remaining">
+    Any old fibers not matched are marked for deletion.
+    
+    ```javascript
+    oldFiberMap.forEach((fiber) => {
+      fiber.effectTag = EFFECT_TAGS.DELETION;
+      state.deletions.push(fiber);
+    });
+    ```
+  </Step>
+</Steps>
+
+### Effect Tags
+
+```javascript
+const EFFECT_TAGS = {
+  PLACEMENT: 'PLACEMENT',   // New element → appendChild
+  UPDATE: 'UPDATE',         // Existing element → update props
+  DELETION: 'DELETION',     // Removed element → removeChild
+  HYDRATE: 'HYDRATE',       // SSR element → attach listeners
+};
+```
+
+<CardGroup cols={2}>
+  <Card title="PLACEMENT" icon="plus">
+    A new fiber that needs to be inserted into the DOM. The commit phase will call `appendChild()`.
+  </Card>
+  
+  <Card title="UPDATE" icon="pen">
+    An existing fiber with changed props. The commit phase will call `updateDom()` to apply the changes.
+  </Card>
+  
+  <Card title="DELETION" icon="trash">
+    A fiber that was removed from the tree. The commit phase will call `removeChild()` after running cleanup effects.
+  </Card>
+  
+  <Card title="HYDRATE" icon="droplet">
+    An existing SSR DOM node. The commit phase will attach event listeners and fix props without moving the node.
+  </Card>
+</CardGroup>
+
+## Work Loop & Workers
+
+The asynchronous execution model breaks tree traversal into chunks using `requestIdleCallback`.
+
+### performUnitOfWork()
+
+Processes a single fiber and returns the next fiber to work on.
+
+**Source Reference:** `/packages/core/src/lib/workers.js:12`
+
+```javascript
+function performUnitOfWork(fiber) {
+  const isFunctionComponent = 
+    fiber.type instanceof Function || typeof fiber.type === 'function';
+
+  // 1. Update component or host element
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
+
+  // 2. Return next unit of work
+  if (fiber.child) {
+    return fiber.child;  // Descend to first child
+  }
+
+  let nextFiber = fiber;
+  while (nextFiber) {
+    if (nextFiber.sibling) {
+      return nextFiber.sibling;  // Move to sibling
+    }
+    nextFiber = nextFiber.parent;  // Ascend to parent
+  }
+}
+```
+
+#### Traversal Order
+
+<Steps>
+  <Step title="Descend to Children">
+    Process the current fiber, then move to `fiber.child`.
+  </Step>
+  
+  <Step title="Move to Siblings">
+    If no child, move to `fiber.sibling`.
+  </Step>
+  
+  <Step title="Ascend to Parent">
+    If no sibling, ascend to `fiber.parent` and repeat.
+  </Step>
+  
+  <Step title="Complete">
+    When no parent exists, the entire tree has been processed.
+  </Step>
+</Steps>
+
+**Example traversal:**
+
+```
+App → div → Header → Main → Article → Sidebar → (back to Main) → (back to div) → (back to App) → null
+```
+
+### workLoop()
+
+Runs the work loop in idle frames, processing fibers until time runs out or work is complete.
+
+**Source Reference:** `/packages/core/src/lib/workers.js:91`
+
+```javascript
+const workLoop = (deadline) => {
+  const state = getState();
+  let shouldYield = false;
+
+  while ((state.nextUnitOfWork || workQueue.length > 0) && !shouldYield) {
+    if (!state.nextUnitOfWork && workQueue.length > 0) {
+      const nextRoot = workQueue.shift();
+      state.wipRoot = nextRoot;
+      state.nextUnitOfWork = nextRoot;
+      state.deletions = [];
+    }
+
+    if (state.nextUnitOfWork) {
+      state.nextUnitOfWork = performUnitOfWork(state.nextUnitOfWork);
+    }
+
+    shouldYield = deadline.timeRemaining() < 1;
+  }
+
+  if (!state.nextUnitOfWork && state.wipRoot) {
+    commitRoot();
+  }
+
+  if (state.nextUnitOfWork || workQueue.length > 0) {
+    rIC(workLoop);
+  } else {
+    isWorkLoopScheduled = false;
+  }
+};
+```
+
+<Note>
+  The work loop uses `requestIdleCallback` (or `setTimeout` fallback) to consume the work queue. It processes `state.nextUnitOfWork` until `shouldYield` is true (less than 1ms remaining).
+</Note>
+
+### Interruptible Rendering
+
+```javascript
+// Check if we should yield to the browser
+shouldYield = deadline.timeRemaining() < 1;
+```
+
+If less than 1ms remains in the idle frame:
+- Work pauses
+- Control returns to the browser
+- Browser can handle user input, animations, etc.
+- Work resumes in the next idle frame
+
+<Tip>
+  This prevents long-running renders from freezing the UI, keeping your app responsive even during heavy updates.
+</Tip>
+
+## Commits and Effects
+
+The commit phase executes calculated DOM mutations synchronously to avoid visual inconsistencies.
+
+### commitRoot()
+
+Synchronously applies all DOM changes once the entire tree is reconciled.
+
+**Source Reference:** `/packages/core/src/lib/commits.js:92`
+
+<Steps>
+  <Step title="Process Deletions">
+    Execute all node deletions first, running cleanup effects before removing DOM nodes.
+    
+    ```javascript
+    state.deletions.forEach(commitWork);
+    ```
+  </Step>
+  
+  <Step title="Swap Trees">
+    Interchange the active tree pointer before running effects.
+    
+    ```javascript
+    state.currentRoot = state.wipRoot;
+    ```
+  </Step>
+  
+  <Step title="Commit Work">
+    Recursively walk the tree to run Placements, Updates, and Hydrations.
+    
+    ```javascript
+    commitWork(finishedWork.child);
+    ```
+  </Step>
+  
+  <Step title="Cleanup Hydration">
+    Clean up stale hydration caches and unmatched SSR nodes.
+  </Step>
+</Steps>
+
+### commitWork()
+
+Handles traversing and applying targeted DOM mutations for host components and Portals.
+
+**Source Reference:** `/packages/core/src/lib/commits.js:145`
+
+```javascript
+function commitWork(fiber) {
+  if (!fiber) return;
+
+  // Handle portal fibers
+  if (fiber.type === RYUNIX_PORTAL || fiber._isPortal) {
+    const portalContainer = fiber.containerInfo;
+    commitPortalWork(fiber.child, portalContainer);
+    commitWork(fiber.sibling);
+    return;
+  }
+
+  // Find DOM parent
+  let domParentFiber = fiber.parent;
+  while (domParentFiber && !domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent;
+  }
+  const domParent = domParentFiber.dom;
+
+  // Apply effect based on tag
+  if (fiber.effectTag === EFFECT_TAGS.PLACEMENT) {
+    if (fiber.dom != null) {
+      domParent.appendChild(fiber.dom);
+    }
+    runLayoutEffects(fiber);
+    runNormalEffects(fiber);
+  } else if (fiber.effectTag === EFFECT_TAGS.UPDATE) {
+    cancelEffects(fiber);
+    if (fiber.dom != null) {
+      updateDom(fiber.dom, fiber.alternate.props, fiber.props);
+    }
+    runLayoutEffects(fiber);
+    runNormalEffects(fiber);
+  } else if (fiber.effectTag === EFFECT_TAGS.HYDRATE) {
+    if (fiber.dom != null) {
+      updateDom(fiber.dom, {}, fiber.props);
+    }
+    runLayoutEffects(fiber);
+    runNormalEffects(fiber);
+  } else if (fiber.effectTag === EFFECT_TAGS.DELETION) {
+    cancelEffectsDeep(fiber);
+    commitDeletion(fiber, domParent);
+    return;
+  }
+
+  commitWork(fiber.child);
+  commitWork(fiber.sibling);
+}
+```
+
+### Effect Execution Order
+
+<Steps>
+  <Step title="Layout Effects (Sync)">
+    `useLayoutEffect` callbacks run **synchronously** right after DOM mutations, before the browser paints.
+    
+    ```javascript
+    runLayoutEffects(fiber);
+    ```
+  </Step>
+  
+  <Step title="Normal Effects (Async)">
+    `useEffect` callbacks run **asynchronously** after the browser paints.
+    
+    ```javascript
+    runNormalEffects(fiber);
+    ```
+  </Step>
+</Steps>
+
+## Key-Based Reconciliation
+
+Ryunix uses explicit `key` props (or positional indices as fallback) for O(1) lookup during reconciliation.
+
+### Without Keys
+
+```jsx
+// Initial render
+<ul>
+  <li>Apple</li>
+  <li>Banana</li>
+</ul>
+
+// After update (inserted at start)
+<ul>
+  <li>Orange</li>
+  <li>Apple</li>
+  <li>Banana</li>
+</ul>
+```
+
+**Result:** All three `<li>` elements are updated because positional matching fails.
+
+### With Keys
+
+```jsx
+// Initial render
+<ul>
+  <li key="apple">Apple</li>
+  <li key="banana">Banana</li>
+</ul>
+
+// After update (inserted at start)
+<ul>
+  <li key="orange">Orange</li>
+  <li key="apple">Apple</li>
+  <li key="banana">Banana</li>
+</ul>
+```
+
+**Result:** Only one new `<li>` is created. "Apple" and "Banana" fibers are matched by key and reused.
+
+<Warning>
+  Never use array indices as keys when the list order can change. This defeats the purpose of keys and can cause bugs with component state.
+</Warning>
+
+### Key Matching Algorithm
+
+```javascript
+// Build map of old fibers by key
+const oldFiberMap = new Map();
+let oldFiber = wipFiber.alternate?.child;
+let position = 0;
+
+while (oldFiber) {
+  const key = oldFiber.key ?? `__index_${position}__`;
+  oldFiberMap.set(key, oldFiber);
+  oldFiber = oldFiber.sibling;
+  position++;
+}
+
+// Match new elements against old fibers
+const key = element.key ?? `__index_${index}__`;
+const matchedFiber = oldFiberMap.get(key);
+
+if (matchedFiber && element.type === matchedFiber.type) {
+  // Reuse fiber with UPDATE tag
+} else {
+  // Create new fiber with PLACEMENT tag
+}
+```
+
+## Error Boundaries
+
+When an error is thrown during `performUnitOfWork`, the reconciler searches up the fiber tree for an ErrorBoundary.
+
+**Source Reference:** `/packages/core/src/lib/workers.js:27`
+
+```javascript
+try {
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
+} catch (error) {
+  // Traverse upwards to find nearest ErrorBoundary
+  let boundaryFiber = fiber.parent;
+
+  while (boundaryFiber) {
+    if (boundaryFiber.type?.ryunix_type === 'RYUNIX_ERROR_BOUNDARY') {
+      boundaryFiber.stateError = error;
+      fiber.child = null;  // Prune corrupted children
+      return boundaryFiber;  // Rewind to boundary
+    }
+    boundaryFiber = boundaryFiber.parent;
+  }
+
+  // No boundary found → fatal error
+  console.error('[Ryunix] Fatal Uncaught Error:', error);
+  state.nextUnitOfWork = null;
+}
+```
+
+<Note>
+  ErrorBoundary recovery happens **during reconciliation**, before any DOM changes are committed. This prevents corrupted state from reaching the UI.
+</Note>
+
+## Performance Characteristics
+
+### Time Complexity
+
+| Operation | Complexity | Description |
+|-----------|-----------|-------------|
+| Key lookup | O(1) | Map-based key matching |
+| Tree traversal | O(n) | Visit each fiber once |
+| Reconciliation | O(n) | Linear in number of elements |
+| Commit | O(m) | Linear in number of changes |
+
+### Space Complexity
+
+- **Current tree:** O(n) fibers
+- **Work-in-progress tree:** O(n) fibers
+- **Old fiber map:** O(k) where k = number of children
+- **Deletions queue:** O(d) where d = number of deletions
+
+<Tip>
+  Ryunix maintains two trees (current and work-in-progress) using the **double buffering** technique. After commit, the WIP tree becomes the current tree.
+</Tip>

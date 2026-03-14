@@ -1,0 +1,428 @@
+---
+title: 'MDXProvider'
+description: 'Provide custom components for MDX content rendering'
+icon: 'file-code'
+---
+
+## Overview
+
+`MDXProvider` is a context provider that allows you to customize how MDX markdown elements are rendered. It enables you to replace default HTML elements with custom styled components throughout your MDX content.
+
+## Import
+
+```javascript
+import { MDXProvider, useMDXComponents, getMDXComponents } from 'ryunix'
+```
+
+## Components
+
+### MDXProvider
+
+Context provider for MDX component customization.
+
+```javascript
+const { Provider: MDXProvider, useContext: useMDXComponents } = createContext(
+  'ryunix.mdx',
+  {}
+)
+```
+
+### useMDXComponents
+
+Hook to access MDX components from context.
+
+```javascript
+const useMDXComponents = () => {
+  // Returns current MDX components from context
+}
+```
+
+### getMDXComponents
+
+Utility to merge context components with provided components.
+
+```javascript
+const getMDXComponents = (components) => {
+  const contextComponents = useMDXComponents()
+  return {
+    ...contextComponents,
+    ...components,
+  }
+}
+```
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { MDXProvider } from 'ryunix'
+import { MyHeading, MyParagraph } from './components'
+
+const components = {
+  h1: MyHeading,
+  p: MyParagraph,
+}
+
+const App = () => {
+  return (
+    <MDXProvider value={components}>
+      <MDXContent />
+    </MDXProvider>
+  )
+}
+```
+
+```jsx Custom Components
+import { MDXProvider } from 'ryunix'
+
+const components = {
+  h1: (props) => (
+    <h1 className="text-4xl font-bold mb-4" {...props} />
+  ),
+  h2: (props) => (
+    <h2 className="text-3xl font-semibold mb-3" {...props} />
+  ),
+  p: (props) => (
+    <p className="text-gray-700 mb-4 leading-relaxed" {...props} />
+  ),
+  a: (props) => (
+    <a className="text-blue-600 hover:underline" {...props} />
+  ),
+  code: (props) => (
+    <code className="bg-gray-100 px-2 py-1 rounded" {...props} />
+  ),
+}
+
+const Blog = ({ children }) => {
+  return (
+    <MDXProvider value={components}>
+      {children}
+    </MDXProvider>
+  )
+}
+```
+
+```jsx Nested Providers
+import { MDXProvider, useMDXComponents } from 'ryunix'
+
+const globalComponents = {
+  h1: (props) => <h1 className="title" {...props} />,
+  p: (props) => <p className="paragraph" {...props} />,
+}
+
+const articleComponents = {
+  // Override h1, inherit p
+  h1: (props) => <h1 className="article-title" {...props} />,
+  code: (props) => <code className="code-block" {...props} />,
+}
+
+const App = () => {
+  return (
+    <MDXProvider value={globalComponents}>
+      <Layout>
+        <MDXProvider value={articleComponents}>
+          <Article />
+        </MDXProvider>
+      </Layout>
+    </MDXProvider>
+  )
+}
+```
+
+```jsx Using useMDXComponents Hook
+import { useMDXComponents } from 'ryunix'
+
+const CustomMarkdown = ({ content }) => {
+  const components = useMDXComponents()
+  
+  return (
+    <div>
+      <components.h1>Title</components.h1>
+      <components.p>{content}</components.p>
+    </div>
+  )
+}
+```
+
+```jsx Merging Components
+import { getMDXComponents } from 'ryunix'
+
+const Article = () => {
+  // Merge context components with local overrides
+  const components = getMDXComponents({
+    h1: (props) => <h1 className="custom-h1" {...props} />,
+  })
+  
+  return (
+    <article>
+      <components.h1>Article Title</components.h1>
+      <components.p>Article content...</components.p>
+    </article>
+  )
+}
+```
+
+</CodeGroup>
+
+## Default Components
+
+RyunixJS provides default components for all standard MDX elements:
+
+```javascript
+const defaultComponents = {
+  // Headings
+  h1: (props) => createElement('h1', { ...props }),
+  h2: (props) => createElement('h2', { ...props }),
+  h3: (props) => createElement('h3', { ...props }),
+  h4: (props) => createElement('h4', { ...props }),
+  h5: (props) => createElement('h5', { ...props }),
+  h6: (props) => createElement('h6', { ...props }),
+
+  // Text
+  p: (props) => createElement('p', { ...props }),
+  a: (props) => createElement('a', { ...props }),
+  strong: (props) => createElement('strong', { ...props }),
+  em: (props) => createElement('em', { ...props }),
+  code: (props) => createElement('code', { ...props }),
+
+  // Lists
+  ul: (props) => createElement('ul', { ...props }),
+  ol: (props) => createElement('ol', { ...props }),
+  li: (props) => createElement('li', { ...props }),
+
+  // Blocks
+  blockquote: (props) => createElement('blockquote', { ...props }),
+  pre: (props) => createElement('pre', { ...props }),
+  hr: (props) => createElement('hr', { ...props }),
+
+  // Tables
+  table: (props) => createElement('table', { ...props }),
+  thead: (props) => createElement('thead', { ...props }),
+  tbody: (props) => createElement('tbody', { ...props }),
+  tr: (props) => createElement('tr', { ...props }),
+  th: (props) => createElement('th', { ...props }),
+  td: (props) => createElement('td', { ...props }),
+
+  // Media
+  img: (props) => createElement('img', { ...props }),
+}
+```
+
+## Available Elements
+
+You can override any of these MDX elements:
+
+<ResponseField name="h1, h2, h3, h4, h5, h6" type="Component">
+  Heading components
+</ResponseField>
+
+<ResponseField name="p" type="Component">
+  Paragraph component
+</ResponseField>
+
+<ResponseField name="a" type="Component">
+  Link/anchor component
+</ResponseField>
+
+<ResponseField name="strong" type="Component">
+  Bold text component
+</ResponseField>
+
+<ResponseField name="em" type="Component">
+  Italic/emphasis component
+</ResponseField>
+
+<ResponseField name="code" type="Component">
+  Inline code component
+</ResponseField>
+
+<ResponseField name="pre" type="Component">
+  Code block wrapper component
+</ResponseField>
+
+<ResponseField name="ul, ol, li" type="Component">
+  List components
+</ResponseField>
+
+<ResponseField name="blockquote" type="Component">
+  Blockquote component
+</ResponseField>
+
+<ResponseField name="hr" type="Component">
+  Horizontal rule component
+</ResponseField>
+
+<ResponseField name="table, thead, tbody, tr, th, td" type="Component">
+  Table components
+</ResponseField>
+
+<ResponseField name="img" type="Component">
+  Image component
+</ResponseField>
+
+## Advanced Patterns
+
+### Syntax Highlighting
+
+```jsx
+import { MDXProvider } from 'ryunix'
+import { Prism } from 'prism-react-renderer'
+
+const components = {
+  code: ({ children, className }) => {
+    const language = className?.replace(/language-/, '') || 'text'
+    
+    return (
+      <Prism
+        code={children}
+        language={language}
+        theme={theme}
+      >
+        {({ tokens, getLineProps, getTokenProps }) => (
+          <pre className={className}>
+            {tokens.map((line, i) => (
+              <div key={i} {...getLineProps({ line })}>
+                {line.map((token, key) => (
+                  <span key={key} {...getTokenProps({ token })} />
+                ))}
+              </div>
+            ))}
+          </pre>
+        )}
+      </Prism>
+    )
+  },
+}
+```
+
+### Custom Link Component
+
+```jsx
+import { MDXProvider } from 'ryunix'
+
+const CustomLink = ({ href, children, ...props }) => {
+  const isInternal = href.startsWith('/')
+  const isAnchor = href.startsWith('#')
+  
+  if (isInternal || isAnchor) {
+    return <a href={href} {...props}>{children}</a>
+  }
+  
+  return (
+    <a 
+      href={href} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      {...props}
+    >
+      {children} ↗
+    </a>
+  )
+}
+
+const components = {
+  a: CustomLink,
+}
+```
+
+### Image Optimization
+
+```jsx
+import { MDXProvider } from 'ryunix'
+import { OptimizedImage } from './OptimizedImage'
+
+const components = {
+  img: ({ src, alt, ...props }) => (
+    <OptimizedImage
+      src={src}
+      alt={alt}
+      loading="lazy"
+      sizes="(max-width: 768px) 100vw, 768px"
+      {...props}
+    />
+  ),
+}
+```
+
+### Table of Contents Generation
+
+```jsx
+import { MDXProvider, useStore } from 'ryunix'
+
+const TOCProvider = ({ children }) => {
+  const [headings, setHeadings] = useStore([])
+  
+  const components = {
+    h2: (props) => {
+      const id = props.children.toLowerCase().replace(/\s+/g, '-')
+      setHeadings(h => [...h, { id, text: props.children, level: 2 }])
+      return <h2 id={id} {...props} />
+    },
+    h3: (props) => {
+      const id = props.children.toLowerCase().replace(/\s+/g, '-')
+      setHeadings(h => [...h, { id, text: props.children, level: 3 }])
+      return <h3 id={id} {...props} />
+    },
+  }
+  
+  return (
+    <MDXProvider value={components}>
+      <div className="toc">
+        <h4>Table of Contents</h4>
+        <ul>
+          {headings.map(h => (
+            <li key={h.id} style={{ marginLeft: (h.level - 2) * 20 }}>
+              <a href={`#${h.id}`}>{h.text}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {children}
+    </MDXProvider>
+  )
+}
+```
+
+## Best Practices
+
+<Tip>
+  Define your component overrides at the app level for consistency across all MDX content.
+</Tip>
+
+<Tip>
+  Use nested MDXProviders to create component variations for different sections (e.g., blog vs documentation).
+</Tip>
+
+<Note>
+  Component overrides receive all props from the original MDX element, so always spread props to preserve functionality.
+</Note>
+
+## TypeScript Support
+
+```typescript
+import { MDXProvider } from 'ryunix'
+import type { ComponentType, HTMLAttributes } from 'ryunix'
+
+type MDXComponents = {
+  [key: string]: ComponentType<HTMLAttributes<any>>
+}
+
+const components: MDXComponents = {
+  h1: (props) => <h1 className="title" {...props} />,
+  p: (props) => <p className="paragraph" {...props} />,
+}
+
+const App = () => {
+  return (
+    <MDXProvider value={components}>
+      <Content />
+    </MDXProvider>
+  )
+}
+```
+
+## Related
+
+- [Context API](/api/hooks/useContext)
+- See the examples above for MDX integration patterns

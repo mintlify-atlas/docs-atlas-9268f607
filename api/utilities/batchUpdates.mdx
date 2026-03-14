@@ -1,0 +1,527 @@
+---
+title: 'batchUpdates'
+description: 'Batch multiple state updates for optimized rendering'
+icon: 'layer-group'
+---
+
+## Overview
+
+`batchUpdates` allows you to batch multiple state updates together, ensuring they're processed in a single render cycle. This improves performance by avoiding unnecessary re-renders when updating multiple pieces of state.
+
+## Import
+
+```javascript
+import { batchUpdates } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+let isBatching = false
+let pendingUpdates = []
+
+const batchUpdates = (callback) => {
+  const wasBatching = isBatching
+  isBatching = true
+
+  try {
+    callback()
+  } finally {
+    isBatching = wasBatching
+
+    if (!isBatching && pendingUpdates.length > 0) {
+      flushUpdates()
+    }
+  }
+}
+```
+
+## Parameters
+
+<ParamField path="callback" type="Function" required>
+  A function containing multiple state updates that should be batched together. All updates within this function will be processed in a single render cycle.
+</ParamField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Batching
+import { batchUpdates, useStore } from 'ryunix'
+
+const Counter = () => {
+  const [count, setCount] = useStore(0)
+  const [name, setName] = useStore('')
+  const [active, setActive] = useStore(false)
+  
+  const handleUpdate = () => {
+    batchUpdates(() => {
+      setCount(count + 1)
+      setName('Updated')
+      setActive(true)
+    })
+    // All three updates trigger only ONE render
+  }
+  
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <p>Name: {name}</p>
+      <p>Active: {active ? 'Yes' : 'No'}</p>
+      <button onClick={handleUpdate}>Update All</button>
+    </div>
+  )
+}
+```
+
+```jsx Form Submission
+import { batchUpdates, useStore } from 'ryunix'
+
+const Form = () => {
+  const [values, setValues] = useStore({ name: '', email: '' })
+  const [errors, setErrors] = useStore({})
+  const [isSubmitting, setIsSubmitting] = useStore(false)
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    batchUpdates(() => {
+      setErrors({})
+      setIsSubmitting(true)
+    })
+    
+    try {
+      await submitForm(values)
+      
+      batchUpdates(() => {
+        setValues({ name: '', email: '' })
+        setIsSubmitting(false)
+      })
+    } catch (error) {
+      batchUpdates(() => {
+        setErrors({ submit: error.message })
+        setIsSubmitting(false)
+      })
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input 
+        value={values.name} 
+        onChange={(e) => setValues({ ...values, name: e.target.value })}
+      />
+      <input 
+        value={values.email} 
+        onChange={(e) => setValues({ ...values, email: e.target.value })}
+      />
+      <button disabled={isSubmitting}>Submit</button>
+    </form>
+  )
+}
+```
+
+```jsx Data Fetching
+import { batchUpdates, useStore, useEffect } from 'ryunix'
+
+const DataFetcher = ({ url }) => {
+  const [data, setData] = useStore(null)
+  const [loading, setLoading] = useStore(false)
+  const [error, setError] = useStore(null)
+  
+  useEffect(() => {
+    batchUpdates(() => {
+      setLoading(true)
+      setError(null)
+    })
+    
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        batchUpdates(() => {
+          setData(data)
+          setLoading(false)
+        })
+      })
+      .catch(err => {
+        batchUpdates(() => {
+          setError(err.message)
+          setLoading(false)
+        })
+      })
+  }, [url])
+  
+  if (loading) return <div>Loading...</div>
+  if (error) return <div>Error: {error}</div>
+  return <div>{JSON.stringify(data)}</div>
+}
+```
+
+```jsx Animation State
+import { batchUpdates, useStore } from 'ryunix'
+
+const AnimatedBox = () => {
+  const [x, setX] = useStore(0)
+  const [y, setY] = useStore(0)
+  const [scale, setScale] = useStore(1)
+  const [rotation, setRotation] = useStore(0)
+  
+  const animate = () => {
+    batchUpdates(() => {
+      setX(100)
+      setY(100)
+      setScale(1.5)
+      setRotation(45)
+    })
+    // All animation properties update together
+  }
+  
+  return (
+    <div
+      style={{
+        transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
+        transition: 'all 0.3s',
+      }}
+      onClick={animate}
+    >
+      Click to animate
+    </div>
+  )
+}
+```
+
+```jsx List Operations
+import { batchUpdates, useStore } from 'ryunix'
+
+const TodoList = () => {
+  const [todos, setTodos] = useStore([])
+  const [input, setInput] = useStore('')
+  const [filter, setFilter] = useStore('all')
+  
+  const addTodo = () => {
+    if (!input.trim()) return
+    
+    batchUpdates(() => {
+      setTodos([...todos, { id: Date.now(), text: input, done: false }])
+      setInput('')
+      setFilter('all')
+    })
+  }
+  
+  const clearCompleted = () => {
+    batchUpdates(() => {
+      setTodos(todos.filter(t => !t.done))
+      setFilter('all')
+    })
+  }
+  
+  return (
+    <div>
+      <input value={input} onChange={(e) => setInput(e.target.value)} />
+      <button onClick={addTodo}>Add</button>
+      <button onClick={clearCompleted}>Clear Completed</button>
+      {/* Todo list rendering */}
+    </div>
+  )
+}
+```
+
+</CodeGroup>
+
+## Internal Mechanism
+
+### Queue System
+
+```javascript
+let isBatching = false
+let pendingUpdates = []
+
+const queueUpdate = (update) => {
+  pendingUpdates.push(update)
+
+  if (!isBatching) {
+    flushUpdates()
+  }
+}
+
+const flushUpdates = () => {
+  if (pendingUpdates.length === 0) return
+
+  const updates = pendingUpdates
+  pendingUpdates = []
+
+  // Execute all updates
+  updates.forEach((update) => update())
+}
+```
+
+### Batching Flow
+
+1. **Enter Batch**: Set `isBatching = true`
+2. **Execute Callback**: All updates are queued, not executed
+3. **Exit Batch**: Set `isBatching = false`
+4. **Flush Updates**: Execute all queued updates at once
+
+## Performance Comparison
+
+### Without Batching
+
+```jsx
+const Component = () => {
+  const [a, setA] = useStore(0)
+  const [b, setB] = useStore(0)
+  const [c, setC] = useStore(0)
+  
+  const update = () => {
+    setA(1)  // Render 1
+    setB(2)  // Render 2
+    setC(3)  // Render 3
+  }
+  // Total: 3 renders
+}
+```
+
+### With Batching
+
+```jsx
+const Component = () => {
+  const [a, setA] = useStore(0)
+  const [b, setB] = useStore(0)
+  const [c, setC] = useStore(0)
+  
+  const update = () => {
+    batchUpdates(() => {
+      setA(1)
+      setB(2)
+      setC(3)
+    })
+  }
+  // Total: 1 render
+}
+```
+
+## Advanced Patterns
+
+### Nested Batching
+
+```jsx
+import { batchUpdates, useStore } from 'ryunix'
+
+const Component = () => {
+  const [state, setState] = useStore(initialState)
+  
+  const complexUpdate = () => {
+    batchUpdates(() => {
+      setState({ ...state, a: 1 })
+      
+      // Nested batch is safe
+      batchUpdates(() => {
+        setState({ ...state, b: 2 })
+        setState({ ...state, c: 3 })
+      })
+      
+      setState({ ...state, d: 4 })
+    })
+    // Still only 1 render
+  }
+}
+```
+
+### Conditional Batching
+
+```jsx
+import { batchUpdates, useStore } from 'ryunix'
+
+const Component = ({ shouldBatch }) => {
+  const [state, setState] = useStore({})
+  
+  const update = () => {
+    const updates = () => {
+      setState({ a: 1 })
+      setState({ b: 2 })
+      setState({ c: 3 })
+    }
+    
+    if (shouldBatch) {
+      batchUpdates(updates)
+    } else {
+      updates()
+    }
+  }
+}
+```
+
+### Custom Batch Hook
+
+```jsx
+import { batchUpdates, useStore } from 'ryunix'
+
+const useBatchedState = (initialState) => {
+  const [state, setState] = useStore(initialState)
+  
+  const batchedSetState = (updates) => {
+    batchUpdates(() => {
+      if (typeof updates === 'function') {
+        setState(updates)
+      } else {
+        setState({ ...state, ...updates })
+      }
+    })
+  }
+  
+  return [state, batchedSetState]
+}
+
+// Usage
+const Component = () => {
+  const [state, setState] = useBatchedState({ a: 0, b: 0, c: 0 })
+  
+  const update = () => {
+    setState({ a: 1, b: 2, c: 3 }) // Automatically batched
+  }
+}
+```
+
+### Async Batching
+
+```jsx
+import { batchUpdates, useStore } from 'ryunix'
+
+const Component = () => {
+  const [data, setData] = useStore(null)
+  const [loading, setLoading] = useStore(false)
+  const [error, setError] = useStore(null)
+  
+  const fetchData = async () => {
+    batchUpdates(() => {
+      setLoading(true)
+      setError(null)
+    })
+    
+    try {
+      const result = await api.getData()
+      
+      // Batch async results
+      batchUpdates(() => {
+        setData(result)
+        setLoading(false)
+      })
+    } catch (err) {
+      batchUpdates(() => {
+        setError(err)
+        setLoading(false)
+      })
+    }
+  }
+}
+```
+
+## When to Use
+
+<Tip>
+  Use `batchUpdates` when:
+  - Updating multiple related state values at once
+  - Performing batch operations on data structures
+  - Handling form submissions with multiple fields
+  - Synchronizing multiple pieces of state after async operations
+</Tip>
+
+<Note>
+  RyunixJS automatically batches updates in event handlers, so you may not need explicit batching in those cases.
+</Note>
+
+## Best Practices
+
+<Tip>
+  Group related state updates together in a single `batchUpdates` call for optimal performance.
+</Tip>
+
+<Tip>
+  Use `batchUpdates` for state synchronization after data fetching to avoid intermediate loading states.
+</Tip>
+
+<Warning>
+  Don't overuse batching. If updates aren't related or don't happen together, batching may hide bugs or make code harder to understand.
+</Warning>
+
+## Error Handling
+
+The `batchUpdates` function uses try-finally to ensure proper cleanup:
+
+```javascript
+try {
+  callback()
+} finally {
+  isBatching = wasBatching
+  
+  if (!isBatching && pendingUpdates.length > 0) {
+    flushUpdates()
+  }
+}
+```
+
+Even if the callback throws an error, the batching state is properly restored and pending updates are flushed.
+
+## TypeScript Support
+
+```typescript
+import { batchUpdates } from 'ryunix'
+
+type Updates = () => void
+
+const Component = () => {
+  const [count, setCount] = useState(0)
+  const [name, setName] = useState('')
+  
+  const handleUpdate: Updates = () => {
+    batchUpdates(() => {
+      setCount(prev => prev + 1)
+      setName('Updated')
+    })
+  }
+}
+```
+
+## Common Pitfalls
+
+### Reading State During Batch
+
+```jsx
+// ❌ Bad - State may not reflect updates yet
+batchUpdates(() => {
+  setCount(count + 1)
+  console.log(count) // Still shows old value
+  setCount(count + 1) // Uses old value
+})
+
+// ✅ Good - Use functional updates
+batchUpdates(() => {
+  setCount(prev => prev + 1)
+  setCount(prev => prev + 1) // Uses updated value
+})
+```
+
+### Forgetting to Batch Async Updates
+
+```jsx
+// ❌ Bad - Updates outside batch
+const fetchData = async () => {
+  const result = await api.getData()
+  setData(result)  // Separate render
+  setLoading(false) // Separate render
+}
+
+// ✅ Good - Batch async results
+const fetchData = async () => {
+  const result = await api.getData()
+  batchUpdates(() => {
+    setData(result)
+    setLoading(false)
+  })
+}
+```
+
+## Related
+
+- [useStore](/api/hooks/useStore)
+- See the examples above for performance optimization patterns

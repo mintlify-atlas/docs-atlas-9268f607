@@ -1,0 +1,379 @@
+---
+title: 'useTransition'
+description: 'Mark state updates as non-urgent transitions for better UX'
+icon: 'hourglass'
+---
+
+## Overview
+
+`useTransition` allows you to mark state updates as transitions, indicating they are non-urgent. This helps maintain UI responsiveness by allowing React to interrupt low-priority updates to handle more urgent user interactions.
+
+Transitions are useful for:
+- Large list filtering/sorting
+- Route navigation
+- Tab switching
+- Search results
+- Any UI update that can be briefly delayed
+
+## Signature
+
+```typescript
+function useTransition(): [
+  isPending: boolean,
+  startTransition: (callback: () => void) => void
+]
+```
+
+## Parameters
+
+This hook takes no parameters.
+
+## Returns
+
+Returns a tuple with two elements:
+
+<ResponseField name="isPending" type="boolean">
+  Indicates whether a transition is currently in progress. Use this to show loading states.
+</ResponseField>
+
+<ResponseField name="startTransition" type="(callback: () => void) => void">
+  Function that wraps state updates as low-priority transitions. The callback contains the state updates to defer.
+</ResponseField>
+
+## Usage
+
+### Basic Tab Switching
+
+```jsx
+import { useTransition, useStore } from '@ryunixjs/core'
+
+function TabContainer() {
+  const [isPending, startTransition] = useTransition()
+  const [tab, setTab] = useStore('about')
+
+  const selectTab = (nextTab) => {
+    startTransition(() => {
+      setTab(nextTab)
+    })
+  }
+
+  return (
+    <div>
+      <button onClick={() => selectTab('about')}>About</button>
+      <button onClick={() => selectTab('posts')}>Posts</button>
+      <button onClick={() => selectTab('contact')}>Contact</button>
+      
+      {isPending && <div>Loading...</div>}
+      
+      <div style={{ opacity: isPending ? 0.5 : 1 }}>
+        {tab === 'about' && <AboutTab />}
+        {tab === 'posts' && <PostsTab />}
+        {tab === 'contact' && <ContactTab />}
+      </div>
+    </div>
+  )
+}
+```
+
+### Search with Transitions
+
+```jsx
+import { useTransition, useStore, useMemo } from '@ryunixjs/core'
+
+function SearchableList({ items }) {
+  const [isPending, startTransition] = useTransition()
+  const [query, setQuery] = useStore('')
+  const [deferredQuery, setDeferredQuery] = useStore('')
+
+  const handleSearch = (value) => {
+    // Update input immediately (urgent)
+    setQuery(value)
+    
+    // Defer filtering (non-urgent)
+    startTransition(() => {
+      setDeferredQuery(value)
+    })
+  }
+
+  const filteredItems = useMemo(() => {
+    return items.filter(item =>
+      item.name.toLowerCase().includes(deferredQuery.toLowerCase())
+    )
+  }, [items, deferredQuery])
+
+  return (
+    <div>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => handleSearch(e.target.value)}
+        placeholder="Search..."
+      />
+      {isPending && <div className="spinner">Loading...</div>}
+      <ul style={{ opacity: isPending ? 0.7 : 1 }}>
+        {filteredItems.map(item => (
+          <li key={item.id}>{item.name}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+### Route Transitions
+
+```jsx
+import { useTransition } from '@ryunixjs/core'
+import { useRouter } from '@ryunixjs/core'
+
+function Navigation() {
+  const [isPending, startTransition] = useTransition()
+  const { navigate } = useRouter()
+
+  const handleNavigate = (path) => {
+    startTransition(() => {
+      navigate(path)
+    })
+  }
+
+  return (
+    <nav>
+      <button onClick={() => handleNavigate('/')}>Home</button>
+      <button onClick={() => handleNavigate('/about')}>About</button>
+      <button onClick={() => handleNavigate('/blog')}>Blog</button>
+      {isPending && <span className="loading-bar" />}
+    </nav>
+  )
+}
+```
+
+### Filtering Large Lists
+
+```jsx
+import { useTransition, useStore } from '@ryunixjs/core'
+
+function ProductGrid({ products }) {
+  const [isPending, startTransition] = useTransition()
+  const [category, setCategory] = useStore('all')
+  const [filteredProducts, setFilteredProducts] = useStore(products)
+
+  const filterProducts = (cat) => {
+    // Update UI immediately
+    setCategory(cat)
+    
+    // Defer expensive filtering
+    startTransition(() => {
+      const filtered = cat === 'all'
+        ? products
+        : products.filter(p => p.category === cat)
+      setFilteredProducts(filtered)
+    })
+  }
+
+  return (
+    <div>
+      <div>
+        <button onClick={() => filterProducts('all')}>All</button>
+        <button onClick={() => filterProducts('electronics')}>Electronics</button>
+        <button onClick={() => filterProducts('clothing')}>Clothing</button>
+      </div>
+      
+      {isPending && <div>Filtering...</div>}
+      
+      <div className={isPending ? 'loading' : ''}>
+        {filteredProducts.map(product => (
+          <ProductCard key={product.id} product={product} />
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+### Deferred Value Pattern
+
+```jsx
+import { useTransition, useStore, useEffect } from '@ryunixjs/core'
+
+function useDeferredValue(value) {
+  const [isPending, startTransition] = useTransition()
+  const [deferredValue, setDeferredValue] = useStore(value)
+
+  useEffect(() => {
+    startTransition(() => {
+      setDeferredValue(value)
+    })
+  }, [value])
+
+  return [deferredValue, isPending]
+}
+
+function SearchResults({ query }) {
+  const [deferredQuery, isPending] = useDeferredValue(query)
+  const results = searchDatabase(deferredQuery)
+
+  return (
+    <div>
+      {isPending && <div>Updating...</div>}
+      <ResultsList results={results} />
+    </div>
+  )
+}
+```
+
+## Implementation Details
+
+The hook uses priority-based scheduling:
+
+```javascript
+const useTransition = () => {
+  const [isPending, setIsPending] = useStorePriority(false)
+
+  const startTransition = (callback) => {
+    setIsPending(true, Priority.IMMEDIATE)
+
+    setTimeout(() => {
+      runWithPriority(Priority.LOW, () => {
+        callback()
+        setIsPending(false, Priority.LOW)
+      })
+    }, 0)
+  }
+
+  return [isPending, startTransition]
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:674-689`
+
+<Note>
+  Transitions run with `Priority.LOW`, allowing higher-priority updates to interrupt them.
+</Note>
+
+## Priority System
+
+RyunixJS uses a priority-based scheduling system:
+
+1. **Priority.IMMEDIATE** - `isPending` state updates (runs synchronously)
+2. **Priority.NORMAL** - Regular state updates
+3. **Priority.LOW** - Transition callbacks (can be interrupted)
+
+```javascript
+setIsPending(true, Priority.IMMEDIATE)  // Runs first
+runWithPriority(Priority.LOW, callback) // Runs with low priority
+```
+
+## Transition Timing
+
+The transition is deferred using `setTimeout`:
+
+```javascript
+setTimeout(() => {
+  runWithPriority(Priority.LOW, () => {
+    callback()
+    setIsPending(false, Priority.LOW)
+  })
+}, 0)
+```
+
+This ensures:
+- The UI updates immediately with `isPending = true`
+- The actual state update runs in the next event loop
+- Higher priority updates can interrupt the transition
+
+## When to Use Transitions
+
+<CardGroup cols={2}>
+  <Card title="Good for transitions:" icon="check">
+    - Filtering/sorting large lists
+    - Route navigation
+    - Tab switching
+    - Search results
+    - Non-critical UI updates
+  </Card>
+  <Card title="Not for transitions:" icon="xmark">
+    - Form input updates
+    - Button clicks
+    - Critical user feedback
+    - Error states
+    - Controlled inputs
+  </Card>
+</CardGroup>
+
+## Visual Feedback Patterns
+
+### Loading Spinner
+
+```jsx
+function Component() {
+  const [isPending, startTransition] = useTransition()
+
+  return (
+    <div>
+      {isPending && <Spinner />}
+      {/* content */}
+    </div>
+  )
+}
+```
+
+### Opacity Overlay
+
+```jsx
+function Component() {
+  const [isPending, startTransition] = useTransition()
+
+  return (
+    <div style={{ 
+      opacity: isPending ? 0.6 : 1,
+      transition: 'opacity 0.2s'
+    }}>
+      {/* content */}
+    </div>
+  )
+}
+```
+
+### Disabled State
+
+```jsx
+function Component() {
+  const [isPending, startTransition] = useTransition()
+
+  return (
+    <div>
+      <button disabled={isPending}>Submit</button>
+      {/* content */}
+    </div>
+  )
+}
+```
+
+## Comparison with useDeferredValue
+
+RyunixJS also provides `useDeferredValue` for similar use cases:
+
+```jsx
+import { useDeferredValue } from '@ryunixjs/core'
+
+function SearchResults({ query }) {
+  const deferredQuery = useDeferredValue(query)
+  const results = searchDatabase(deferredQuery)
+  return <ResultsList results={results} />
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:694-706`
+
+<Note>
+  `useDeferredValue` automatically defers a value, while `useTransition` gives you manual control over when to defer updates.
+</Note>
+
+## Related Hooks
+
+- [useStore](/api/hooks/useStore) - Basic state management
+- [useRouter](/api/hooks/useRouter) - Navigation with route transitions
+
+## See Also
+
+See the "Comparison with useDeferredValue" section above for information on the built-in useDeferredValue hook.

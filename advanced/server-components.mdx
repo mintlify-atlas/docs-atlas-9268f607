@@ -1,0 +1,620 @@
+---
+title: "Server Components and Actions"
+description: "Build full-stack applications with Server Components, Server Actions, and server-side boundaries"
+icon: "server"
+---
+
+# Server Components and Actions
+
+RyunixJS supports Server Components and Server Actions, enabling you to build full-stack applications with seamless client-server integration. Server Components render exclusively on the server, while Server Actions allow client components to invoke server-side functions securely.
+
+## Why Server Components
+
+<CardGroup cols={2}>
+  <Card title="Reduced Bundle Size" icon="box">
+    Server Components don't ship to the client, keeping bundles small
+  </Card>
+  <Card title="Direct Data Access" icon="database">
+    Access databases and APIs directly without exposing credentials
+  </Card>
+  <Card title="Better Performance" icon="bolt">
+    Render heavy computations on the server with more resources
+  </Card>
+  <Card title="Automatic Code Splitting" icon="scissors">
+    Server dependencies never reach the client bundle
+  </Card>
+</CardGroup>
+
+## Server Components Basics
+
+Server Components are async functions that run exclusively on the server:
+
+```javascript
+// app/components/UserProfile.server.js
+import { db } from '../lib/database'
+
+export default async function UserProfile({ userId }) {
+  const user = await db.users.findById(userId)
+  const posts = await db.posts.findByUser(userId)
+  
+  return (
+    <div className="profile">
+      <h1>{user.name}</h1>
+      <p>{user.bio}</p>
+      <PostList posts={posts} />
+    </div>
+  )
+}
+```
+
+Key characteristics:
+- Use `.server.js` extension
+- Can be `async` functions
+- Run only during server rendering
+- Can import server-only modules
+- Cannot use client-side hooks (useState, useEffect)
+
+<Note>
+Server Components are rendered during SSR/SSG and their output is serialized to the client. They never execute in the browser.
+</Note>
+
+## Client Components vs Server Components
+
+### Client Components
+
+```javascript
+// app/components/Counter.client.js
+import { useStore } from '@unsetsoft/ryunixjs'
+
+export default function Counter() {
+  const [count, setCount] = useStore(0)
+  
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+- Use `.client.js` extension
+- Can use hooks and state
+- Handle user interactions
+- Ship to client bundle
+
+### Server Components
+
+```javascript
+// app/components/DatabaseStats.server.js
+import { db } from '../lib/database'
+
+export default async function DatabaseStats() {
+  const stats = await db.getStats()
+  
+  return (
+    <div>
+      <p>Users: {stats.userCount}</p>
+      <p>Posts: {stats.postCount}</p>
+    </div>
+  )
+}
+```
+
+- Use `.server.js` extension
+- Can be async
+- Access server resources directly
+- Never ship to client
+
+### Default Components
+
+Components without extensions (`.js`, `.jsx`) are treated as client components by default but can be imported by both server and client components.
+
+## Composition Patterns
+
+### Server Component Importing Client Component
+
+```javascript
+// app/pages/Dashboard.server.js
+import { db } from '../lib/database'
+import InteractiveChart from '../components/Chart.client'
+
+export default async function Dashboard({ userId }) {
+  const data = await db.analytics.getUserData(userId)
+  
+  return (
+    <div>
+      <h1>Analytics Dashboard</h1>
+      <InteractiveChart data={data} />
+    </div>
+  )
+}
+```
+
+<Tip>
+Pass data from server to client as props. The data must be JSON-serializable.
+</Tip>
+
+### Client Component Cannot Import Server Component Directly
+
+<Warning>
+Client components cannot import server components directly. Use composition instead:
+</Warning>
+
+```javascript
+// ❌ Wrong - Client importing Server
+import ServerComponent from './ServerComponent.server'
+
+function ClientComponent() {
+  return <ServerComponent /> // Error!
+}
+
+// ✅ Correct - Pass Server Component as children
+function ClientComponent({ children }) {
+  return <div className="wrapper">{children}</div>
+}
+
+// In parent Server Component
+function ParentServer() {
+  return (
+    <ClientComponent>
+      <ServerComponent />
+    </ClientComponent>
+  )
+}
+```
+
+## Server Actions
+
+Server Actions are server-side functions that can be invoked from client components:
+
+### Creating a Server Action
+
+```javascript
+// app/actions/user.server.js
+'use server'
+
+import { db } from '../lib/database'
+
+export async function updateUser(userId, data) {
+  const user = await db.users.update(userId, data)
+  return user
+}
+
+export async function deleteUser(userId) {
+  await db.users.delete(userId)
+  return { success: true }
+}
+```
+
+The `'use server'` directive marks functions as server actions.
+
+### Calling Server Actions from Client
+
+```javascript
+// app/components/UserForm.client.js
+import { useStore } from '@unsetsoft/ryunixjs'
+import { updateUser } from '../actions/user.server'
+
+export default function UserForm({ userId }) {
+  const [name, setName] = useStore('')
+  const [loading, setLoading] = useStore(false)
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    
+    try {
+      const updatedUser = await updateUser(userId, { name })
+      console.log('Updated:', updatedUser)
+    } catch (error) {
+      console.error('Failed to update:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input 
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        disabled={loading}
+      />
+      <button type="submit" disabled={loading}>
+        {loading ? 'Saving...' : 'Save'}
+      </button>
+    </form>
+  )
+}
+```
+
+### How Server Actions Work
+
+<Steps>
+  <Step title="Build-Time Detection">
+    Webpack detects `'use server'` directive and generates action IDs
+  </Step>
+  <Step title="Client Proxy">
+    Client receives a proxy function that calls `/_ryunix/action` endpoint
+  </Step>
+  <Step title="Server Execution">
+    Server receives action ID and arguments, executes the server function
+  </Step>
+  <Step title="Response">
+    Result is serialized and returned to the client
+  </Step>
+</Steps>
+
+### Server Action Implementation
+
+The client-side proxy:
+
+```javascript
+export function createActionProxy(actionId) {
+  return async function (...args) {
+    const response = await fetch('/_ryunix/action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ actionId, args }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Server Action failed')
+    }
+
+    return response.json()
+  }
+}
+```
+
+## ServerBoundary Component
+
+The `ServerBoundary` component wraps content rendered exclusively on the server:
+
+```javascript
+import { ServerBoundary } from '@unsetsoft/ryunixjs'
+import { db } from './lib/database'
+
+async function SensitiveData({ userId }) {
+  const data = await db.users.getSensitiveData(userId)
+  return <div>{data.secret}</div>
+}
+
+function Page({ userId }) {
+  return (
+    <div>
+      <h1>User Page</h1>
+      <ServerBoundary id="sensitive-data">
+        <SensitiveData userId={userId} />
+      </ServerBoundary>
+    </div>
+  )
+}
+```
+
+### ServerBoundary Behavior
+
+- During SSR, renders children normally on the server
+- During hydration, skips the children to preserve server HTML
+- Uses `data-ryunix-server` attribute for identification
+- Prevents client-side JavaScript from accessing server-only content
+
+<Warning>
+ServerBoundary children are never hydrated on the client. Use this only for truly static server-rendered content.
+</Warning>
+
+## Server-Side Rendering
+
+RyunixJS provides two rendering methods for SSR:
+
+### renderToString
+
+Synchronous rendering for static generation:
+
+```javascript
+import { renderToString } from '@unsetsoft/ryunixjs/server'
+
+const html = renderToString(<App />)
+```
+
+Best for:
+- Static Site Generation (SSG)
+- Simple pages without Suspense
+- Build-time rendering
+
+### renderToReadableStream
+
+Streaming SSR with Suspense support:
+
+```javascript
+import { renderToReadableStream } from '@unsetsoft/ryunixjs/server'
+
+const stream = renderToReadableStream(<App />)
+
+// In Node.js HTTP handler
+stream.pipeTo(response.writable)
+```
+
+Best for:
+- Server-Side Rendering (SSR)
+- Pages with async data loading
+- Suspense boundaries
+- Progressive rendering
+
+### Streaming with Suspense
+
+The stream renderer handles Suspense automatically:
+
+```javascript
+import { renderToReadableStream } from '@unsetsoft/ryunixjs/server'
+import { Suspense } from '@unsetsoft/ryunixjs'
+
+function App() {
+  return (
+    <div>
+      <Header />
+      <Suspense fallback={<Skeleton />}>
+        <AsyncContent />
+      </Suspense>
+    </div>
+  )
+}
+
+const stream = renderToReadableStream(<App />)
+```
+
+The stream:
+1. Immediately sends the outer HTML with fallback
+2. Resolves async components in the background
+3. Injects updates using inline `<script>` tags
+4. Replaces fallbacks with actual content
+
+<Note>
+RyunixJS uses a minimal `$RC` (replace content) helper function injected into the HTML to swap fallbacks with resolved content.
+</Note>
+
+## Islands Architecture
+
+RyunixJS supports islands architecture for partial hydration:
+
+```javascript
+// Mark component as island
+function Counter() {
+  const [count, setCount] = useStore(0)
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>
+}
+
+Counter.ryunix_client_id = 'counter-island'
+
+// During SSR
+const html = renderToString(
+  <div>
+    <StaticHeader />
+    <Counter /> {/* Only this hydrates */}
+    <StaticFooter />
+  </div>
+)
+```
+
+Islands are:
+- Identified by `data-ryunix-island` attribute
+- Serialized with props in `data-props`
+- Hydrated independently on the client
+- Isolated from surrounding static content
+
+## Data Fetching Patterns
+
+### Direct Database Access
+
+```javascript
+// app/pages/Posts.server.js
+import { db } from '../lib/database'
+
+export default async function Posts() {
+  const posts = await db.posts.findAll()
+  
+  return (
+    <div>
+      {posts.map(post => (
+        <PostCard key={post.id} post={post} />
+      ))}
+    </div>
+  )
+}
+```
+
+### API Integration
+
+```javascript
+// app/components/Weather.server.js
+export default async function Weather({ city }) {
+  const response = await fetch(
+    `https://api.weather.com/v1/current?city=${city}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${process.env.WEATHER_API_KEY}`
+      }
+    }
+  )
+  
+  const data = await response.json()
+  
+  return (
+    <div>
+      <h2>{city}</h2>
+      <p>Temperature: {data.temp}°C</p>
+    </div>
+  )
+}
+```
+
+### Parallel Data Fetching
+
+```javascript
+// app/pages/Dashboard.server.js
+export default async function Dashboard({ userId }) {
+  // Fetch in parallel
+  const [user, posts, analytics] = await Promise.all([
+    db.users.findById(userId),
+    db.posts.findByUser(userId),
+    db.analytics.getUserStats(userId)
+  ])
+  
+  return (
+    <div>
+      <UserProfile user={user} />
+      <PostList posts={posts} />
+      <Analytics stats={analytics} />
+    </div>
+  )
+}
+```
+
+## Context in Server Components
+
+Context works across server and client boundaries:
+
+```javascript
+// app/context/UserContext.js
+import { createContext } from '@unsetsoft/ryunixjs'
+
+export const UserContext = createContext(null)
+
+// In server component
+import { UserContext } from '../context/UserContext'
+import { db } from '../lib/database'
+
+async function App({ userId }) {
+  const user = await db.users.findById(userId)
+  
+  return (
+    <UserContext.Provider value={user}>
+      <ClientComponent />
+    </UserContext.Provider>
+  )
+}
+
+// In client component
+import { useContext } from '@unsetsoft/ryunixjs'
+import { UserContext } from '../context/UserContext'
+
+function ClientComponent() {
+  const user = useContext(UserContext)
+  return <div>Welcome, {user.name}</div>
+}
+```
+
+Context values are:
+- Set on the server during SSR
+- Serialized and included in SSR HTML
+- Available to client components after hydration
+
+## Error Handling
+
+### Server Component Errors
+
+Server errors are caught during rendering:
+
+```javascript
+import { ErrorBoundary } from '@unsetsoft/ryunixjs'
+
+function Page() {
+  return (
+    <ErrorBoundary fallback={<div>Failed to load data</div>}>
+      <ServerComponent />
+    </ErrorBoundary>
+  )
+}
+```
+
+### Server Action Errors
+
+Handle errors in server actions:
+
+```javascript
+'use server'
+
+export async function updateUser(userId, data) {
+  try {
+    const user = await db.users.update(userId, data)
+    return { success: true, user }
+  } catch (error) {
+    console.error('Server action error:', error)
+    return { success: false, error: error.message }
+  }
+}
+```
+
+On the client:
+
+```javascript
+const result = await updateUser(userId, data)
+
+if (result.success) {
+  console.log('Updated:', result.user)
+} else {
+  console.error('Error:', result.error)
+}
+```
+
+## Security Considerations
+
+<Warning>
+Never expose sensitive data or credentials to the client:
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="Keep secrets on the server" icon="key">
+    API keys, database credentials, and secrets should only exist in server components and actions. Never pass them as props to client components.
+  </Accordion>
+  
+  <Accordion title="Validate server action inputs" icon="shield-check">
+    Always validate and sanitize data received from client components. Don't trust client input.
+  </Accordion>
+  
+  <Accordion title="Use authentication" icon="lock">
+    Implement proper authentication and authorization checks in server actions before performing sensitive operations.
+  </Accordion>
+  
+  <Accordion title="Sanitize serialized data" icon="broom">
+    Be careful what you serialize and send to the client. Filter out sensitive fields from database records.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Default to Server Components">
+    Use server components by default and only create client components when you need interactivity
+  </Step>
+  <Step title="Keep Client Bundles Small">
+    Move as much logic as possible to server components to reduce JavaScript sent to clients
+  </Step>
+  <Step title="Fetch Data Where You Need It">
+    Fetch data directly in server components instead of passing it down through many layers
+  </Step>
+  <Step title="Use Server Actions for Mutations">
+    Handle all data mutations through server actions instead of exposing APIs
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SSR Guide" icon="globe" href="/webpack/routing-ssr-ssg">
+    Learn more about Server-Side Rendering configuration
+  </Card>
+  <Card title="Error Boundaries" icon="shield" href="/advanced/error-boundaries">
+    Handle errors gracefully in server and client components
+  </Card>
+  <Card title="Lazy Loading" icon="spinner" href="/advanced/lazy-loading">
+    Combine server components with code splitting
+  </Card>
+  <Card title="Context API" icon="circle-nodes" href="/api/hooks/useContext">
+    Share data across server and client boundaries
+  </Card>
+</CardGroup>

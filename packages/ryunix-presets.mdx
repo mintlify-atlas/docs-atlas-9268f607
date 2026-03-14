@@ -1,0 +1,779 @@
+---
+title: '@unsetsoft/ryunix-presets'
+description: Build tooling and development environment presets for RyunixJS applications
+---
+
+## Overview
+
+`@unsetsoft/ryunix-presets` is the central package managing the build system of RyunixJS. It abstracts the complexity of Webpack, Babel, and specialized loaders, providing a unified and optimized development experience with zero-config defaults and extensive customization options.
+
+<CardGroup cols={2}>
+  <Card title="Zero Config" icon="magic">
+    Works out of the box with sensible defaults
+  </Card>
+  <Card title="Full Control" icon="sliders">
+    Extend Webpack, Babel, and ESLint configurations
+  </Card>
+  <Card title="SSR Support" icon="server">
+    Built-in server-side rendering compilation
+  </Card>
+  <Card title="Modern Tooling" icon="wrench">
+    Webpack 5, Babel 7, PostCSS, and more
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+npm install @unsetsoft/ryunix-presets
+```
+
+<Note>
+This package requires `@unsetsoft/ryunixjs` as a peer dependency (^1.2.4-canary.0 or ^1.2.4).
+</Note>
+
+### With Core Package
+
+```bash
+npm install @unsetsoft/ryunixjs @unsetsoft/ryunix-presets
+```
+
+## Package Information
+
+| Property | Value |
+| :--- | :--- |
+| **Package Name** | `@unsetsoft/ryunix-presets` |
+| **Current Version** | `1.0.26-canary.27` |
+| **License** | MIT |
+| **Repository** | [github.com/UnSetSoft/Ryunixjs](https://github.com/UnSetSoft/Ryunixjs) |
+| **Node Support** | 20, 22, 24 |
+
+## CLI Commands
+
+The package provides a `ryunix` CLI for common development tasks:
+
+```bash
+# Development server with HMR
+ryunix dev
+
+# Production build
+ryunix build
+
+# Production build with analysis
+ryunix build --analyze
+```
+
+### Package Scripts Setup
+
+Add these scripts to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "dev": "ryunix dev",
+    "build": "ryunix build",
+    "start": "ryunix dev"
+  }
+}
+```
+
+## Configuration
+
+RyunixJS projects are configured via a `ryunix.config.js` (or `.cjs`) file at the project root.
+
+### Basic Configuration
+
+```javascript
+// ryunix.config.js
+module.exports = {
+  ssr: true,
+  mdx: false,
+  rootDir: 'src',
+  buildDir: '.ryunix',
+  port: 3000,
+  favicon: true,
+  debug: false
+}
+```
+
+### Configuration Options
+
+#### Core Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `ssr` | `boolean` | `true` | Enables Server-Side Rendering compilation |
+| `mdx` | `boolean` | `false` | Enables native MDX support with loaders |
+| `rootDir` | `string` | `"src"` | Source code directory |
+| `buildDir` | `string` | `".ryunix"` | Output directory for builds |
+| `port` | `number` | `3000` | Development server port |
+| `favicon` | `string \| boolean` | `true` | Path to favicon or boolean to enable default |
+| `debug` | `boolean` | `false` | Enable verbose logging |
+| `env` | `object` | `{}` | Environment variables to inject |
+| `proxy` | `array \| object` | - | Proxy configuration for dev server |
+
+### Server Configuration
+
+Configure CORS and Content Security Policy:
+
+```javascript
+module.exports = {
+  server: {
+    csp: true, // or custom CSP string
+    cors: {
+      enabled: true,
+      origin: '*',
+      methods: 'GET,POST,PUT,DELETE',
+      headers: 'Content-Type,Authorization',
+      credentials: false
+    }
+  }
+}
+```
+
+#### Server Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `server.csp` | `boolean \| string` | `false` | Content Security Policy |
+| `server.cors.enabled` | `boolean` | `false` | Enable CORS |
+| `server.cors.origin` | `string` | `'*'` | Allowed origins |
+| `server.cors.methods` | `string` | - | Allowed HTTP methods |
+| `server.cors.headers` | `string` | - | Allowed headers |
+| `server.cors.credentials` | `boolean` | `false` | Allow credentials |
+
+### ESLint Configuration
+
+Customize ESLint behavior during development:
+
+```javascript
+module.exports = {
+  eslint: {
+    files: ['src/**/*.{js,jsx,ryx}'],
+    plugins: {
+      // Custom ESLint plugins
+    },
+    rules: {
+      'no-console': 'warn',
+      'no-unused-vars': 'error',
+      'ryunix/no-unsafe-render': 'warn'
+    }
+  }
+}
+```
+
+#### ESLint Options
+
+| Option | Type | Description |
+| :--- | :--- | :--- |
+| `eslint.files` | `string[]` | File patterns to lint |
+| `eslint.plugins` | `object` | Custom ESLint plugins |
+| `eslint.rules` | `object` | ESLint rules configuration |
+
+### Webpack Customization
+
+Extend the underlying Webpack configuration:
+
+```javascript
+const path = require('path')
+
+module.exports = {
+  webpack: {
+    resolve: {
+      alias: {
+        '@components': path.resolve(__dirname, 'src/components'),
+        '@utils': path.resolve(__dirname, 'src/utils'),
+        '@styles': path.resolve(__dirname, 'src/styles')
+      },
+      extensions: ['.js', '.jsx', '.ryx', '.json']
+    },
+    plugins: [
+      // Add custom Webpack plugins
+    ],
+    module: {
+      rules: [
+        // Add custom loaders
+        {
+          test: /\.custom$/,
+          use: 'custom-loader'
+        }
+      ]
+    },
+    experiments: {
+      lazyCompilation: true // Enable lazy compilation
+    }
+  }
+}
+```
+
+#### Webpack Options
+
+| Option | Type | Description |
+| :--- | :--- | :--- |
+| `webpack.resolve.alias` | `object` | Path aliases for imports |
+| `webpack.resolve.extensions` | `string[]` | File extensions to resolve |
+| `webpack.resolve.fallback` | `object` | Polyfills for Node.js modules |
+| `webpack.plugins` | `array` | Custom Webpack plugins |
+| `webpack.module.rules` | `array` | Custom loader rules |
+| `webpack.devServer.allowedHosts` | `string \| array` | Allowed hosts for dev server |
+| `webpack.externals` | `array \| object` | External dependencies |
+| `webpack.experiments` | `object` | Experimental Webpack features |
+
+### Environment Variables
+
+Inject environment variables at build time:
+
+```javascript
+module.exports = {
+  env: {
+    API_URL: process.env.API_URL || 'https://api.example.com',
+    FEATURE_FLAG: true
+  }
+}
+```
+
+Access in your code:
+
+```javascript
+const apiUrl = process.env.API_URL
+```
+
+<Tip>
+Environment variables are replaced at build time using `dotenv-webpack`. Create a `.env` file for local development.
+</Tip>
+
+### Proxy Configuration
+
+Proxy API requests during development:
+
+```javascript
+module.exports = {
+  proxy: {
+    '/api': {
+      target: 'http://localhost:4000',
+      changeOrigin: true,
+      pathRewrite: { '^/api': '' }
+    }
+  }
+}
+```
+
+Or use array format:
+
+```javascript
+module.exports = {
+  proxy: [
+    {
+      context: ['/api', '/auth'],
+      target: 'http://localhost:4000'
+    }
+  ]
+}
+```
+
+### Legacy Configuration
+
+For backwards compatibility, legacy options are supported:
+
+```javascript
+module.exports = {
+  legacy: {
+    seo: {
+      pageLang: 'en',
+      title: 'My App',
+      meta: {
+        description: 'My application description',
+        keywords: 'ryunix, app'
+      }
+    },
+    template: 'public/index.html', // or false to disable
+    ssg: {
+      sitemap: {
+        enable: true,
+        baseURL: 'https://example.com',
+        settings: {
+          changefreq: 'weekly',
+          priority: '0.8'
+        }
+      }
+    }
+  }
+}
+```
+
+<Warning>
+Legacy configuration options are deprecated and will be removed in a future version. Migrate to the modern configuration API.
+</Warning>
+
+## Build Pipelines
+
+The presets package manages three main compilation pipelines:
+
+### 1. Client Pipeline
+
+**Purpose:** Compiles assets for the browser
+
+**Features:**
+- Code splitting and lazy loading
+- Hot Module Replacement (HMR)
+- CSS extraction and optimization
+- Asset optimization (images, fonts)
+- Source maps for debugging
+
+**Output:** `.ryunix/client/`
+
+### 2. Server Pipeline
+
+**Purpose:** Compiles server-side logic for Node.js environments
+
+**Features:**
+- SSR renderer compilation
+- Server-only code optimization
+- Node.js module resolution
+- Environment variable injection
+
+**Output:** `.ryunix/server/`
+
+### 3. SSG/Prerender Pipeline
+
+**Purpose:** Generates static HTML during build phase
+
+**Features:**
+- Static site generation
+- Pre-rendering for SEO
+- Sitemap generation
+- Meta tag injection
+
+**Output:** `.ryunix/static/`
+
+## Included Dependencies
+
+The package bundles all necessary build tools:
+
+### Build Tools
+
+- **Webpack 5.105.2**: Module bundler
+- **Webpack CLI 6.0.1**: Command-line interface
+- **Webpack Dev Server 5.2.2**: Development server with HMR
+
+### Transpilation
+
+- **Babel 7.28.5**: JavaScript transpiler
+- **@babel/preset-env**: Smart preset for target environments
+- **@babel/preset-react**: JSX transformation
+- **@babel/plugin-transform-react-jsx**: JSX to createElement calls
+- **SWC 1.15.5**: Fast Rust-based compiler (alternative)
+
+### Loaders
+
+- **babel-loader 10.0.0**: Babel integration
+- **css-loader 7.1.2**: CSS imports
+- **sass-loader 16.0.6**: SASS/SCSS compilation
+- **postcss-loader 8.2.1**: PostCSS processing
+- **style-loader 4.0.0**: CSS injection
+- **html-loader 5.1.0**: HTML imports
+- **@mdx-js/loader 3.1.1**: MDX compilation
+
+### Plugins
+
+- **html-webpack-plugin 5.6.5**: HTML generation
+- **mini-css-extract-plugin 2.9.4**: CSS extraction
+- **copy-webpack-plugin 14.0.0**: Static file copying
+- **dotenv-webpack 8.1.1**: Environment variables
+- **eslint-webpack-plugin 5.0.2**: ESLint integration
+- **terser-webpack-plugin 5.4.0**: JavaScript minification
+- **css-minimizer-webpack-plugin 8.0.0**: CSS minification
+
+### MDX Ecosystem
+
+- **@mdx-js/rollup 3.1.1**: MDX Rollup plugin
+- **remark-gfm 4.0.1**: GitHub Flavored Markdown
+- **remark-frontmatter 5.0.0**: YAML frontmatter support
+- **remark-mdx-frontmatter 5.2.0**: MDX frontmatter
+- **rehype-highlight 7.0.2**: Syntax highlighting
+- **@remark-embedder/core 3.0.3**: Embed external content
+
+### Linting
+
+- **ESLint 9.39.2**: JavaScript linter
+- **eslint-plugin-react 7.37.5**: React/Ryunix rules
+- **eslint-plugin-mdx 3.6.2**: MDX linting
+
+### Utilities
+
+- **chalk 5.6.2**: Terminal colors
+- **yargs 18.0.0**: CLI argument parsing
+- **glob 13.0.0**: File pattern matching
+- **thread-loader 4.0.4**: Multi-threaded compilation
+
+## Loader Configurations
+
+The presets package includes specialized loaders for different file types:
+
+### JavaScript/JSX/RYX Files
+
+```javascript
+// Automatically configured
+{
+  test: /\.(js|jsx|ryx)$/,
+  exclude: /node_modules/,
+  use: {
+    loader: 'babel-loader',
+    options: {
+      presets: [
+        '@babel/preset-env',
+        ['@babel/preset-react', {
+          runtime: 'automatic',
+          importSource: '@unsetsoft/ryunixjs'
+        }]
+      ]
+    }
+  }
+}
+```
+
+### CSS/SASS/SCSS Files
+
+```javascript
+// CSS
+{
+  test: /\.css$/,
+  use: [
+    isDev ? 'style-loader' : MiniCssExtractPlugin.loader,
+    'css-loader',
+    'postcss-loader'
+  ]
+}
+
+// SASS/SCSS
+{
+  test: /\.(sass|scss)$/,
+  use: [
+    isDev ? 'style-loader' : MiniCssExtractPlugin.loader,
+    'css-loader',
+    'postcss-loader',
+    'sass-loader'
+  ]
+}
+```
+
+### MDX Files
+
+```javascript
+// When mdx: true in config
+{
+  test: /\.mdx$/,
+  use: [
+    'babel-loader',
+    {
+      loader: '@mdx-js/loader',
+      options: {
+        remarkPlugins: [
+          remarkGfm,
+          remarkFrontmatter,
+          remarkMdxFrontmatter
+        ],
+        rehypePlugins: [rehypeHighlight]
+      }
+    }
+  ]
+}
+```
+
+### Asset Files
+
+```javascript
+// Images
+{
+  test: /\.(png|jpg|jpeg|gif|svg|webp)$/,
+  type: 'asset/resource'
+}
+
+// Fonts
+{
+  test: /\.(woff|woff2|eot|ttf|otf)$/,
+  type: 'asset/resource'
+}
+```
+
+## Development Server
+
+The development server provides:
+
+- **Hot Module Replacement (HMR)**: Instant updates without page refresh
+- **Live Reloading**: Automatic browser refresh on file changes
+- **Error Overlay**: Visual error display in the browser
+- **Proxy Support**: API request proxying
+- **HTTPS Support**: Optional SSL certificates
+- **History API Fallback**: SPA routing support
+
+### Server Configuration
+
+```javascript
+module.exports = {
+  port: 3000,
+  webpack: {
+    devServer: {
+      allowedHosts: 'all', // or ['localhost', '.example.com']
+      hot: true,
+      compress: true,
+      historyApiFallback: true
+    }
+  }
+}
+```
+
+## Production Optimization
+
+The build pipeline automatically applies production optimizations:
+
+<Steps>
+  <Step title="Code Minification">
+    JavaScript minified with Terser, CSS with CSSNano
+  </Step>
+  
+  <Step title="Tree Shaking">
+    Unused code eliminated from final bundle
+  </Step>
+  
+  <Step title="Code Splitting">
+    Automatic chunking for optimal loading
+  </Step>
+  
+  <Step title="Asset Optimization">
+    Images and fonts optimized for size
+  </Step>
+  
+  <Step title="Source Maps">
+    Production source maps for debugging (optional)
+  </Step>
+</Steps>
+
+### Build Output
+
+Production build creates optimized bundles:
+
+```
+.ryunix/
+├── client/
+│   ├── main.[hash].js
+│   ├── main.[hash].css
+│   ├── vendor.[hash].js
+│   └── runtime.[hash].js
+├── server/
+│   └── index.js
+└── static/
+    └── index.html
+```
+
+## CLI Reference
+
+### Binary: `ryunix`
+
+Location: `./webpack/bin/index.mjs`
+
+### Available Commands
+
+#### `ryunix dev`
+
+Starts the development server:
+
+```bash
+ryunix dev
+
+# Custom port
+ryunix dev --port 4000
+
+# Enable debugging
+ryunix dev --debug
+```
+
+**Options:**
+- `--port <number>`: Override dev server port
+- `--debug`: Enable verbose logging
+- `--no-open`: Don't open browser automatically
+
+#### `ryunix build`
+
+Builds for production:
+
+```bash
+ryunix build
+
+# With bundle analysis
+ryunix build --analyze
+
+# Skip SSR build
+ryunix build --no-ssr
+```
+
+**Options:**
+- `--analyze`: Generate bundle analysis report
+- `--no-ssr`: Skip server-side rendering build
+- `--profile`: Enable profiling mode
+
+## Advanced Usage
+
+### Custom Webpack Plugin
+
+```javascript
+// ryunix.config.js
+const CustomPlugin = require('./plugins/custom-plugin')
+
+module.exports = {
+  webpack: {
+    plugins: [
+      new CustomPlugin({
+        option: 'value'
+      })
+    ]
+  }
+}
+```
+
+### Multi-Environment Configuration
+
+```javascript
+// ryunix.config.js
+const isDev = process.env.NODE_ENV !== 'production'
+
+module.exports = {
+  debug: isDev,
+  port: isDev ? 3000 : 8080,
+  webpack: {
+    devServer: {
+      allowedHosts: isDev ? 'all' : ['example.com']
+    }
+  }
+}
+```
+
+### PostCSS Configuration
+
+Create `postcss.config.js`:
+
+```javascript
+module.exports = {
+  plugins: [
+    require('autoprefixer'),
+    require('postcss-nested'),
+    require('postcss-custom-properties')
+  ]
+}
+```
+
+### Babel Configuration
+
+Create `.babelrc` or `babel.config.js`:
+
+```javascript
+module.exports = {
+  presets: [
+    ['@babel/preset-env', {
+      targets: '> 0.25%, not dead'
+    }]
+  ],
+  plugins: [
+    '@babel/plugin-proposal-optional-chaining',
+    '@babel/plugin-proposal-nullish-coalescing-operator'
+  ]
+}
+```
+
+## TypeScript Configuration
+
+The package supports TypeScript through its type definitions:
+
+```typescript
+// ryunix.config.ts
+import type { Settings } from '@unsetsoft/ryunix-presets/webpack'
+
+const config: Settings = {
+  ssr: true,
+  mdx: false,
+  port: 3000
+}
+
+export default config
+```
+
+## Troubleshooting
+
+### Build Performance
+
+If builds are slow, enable lazy compilation:
+
+```javascript
+module.exports = {
+  webpack: {
+    experiments: {
+      lazyCompilation: true
+    }
+  }
+}
+```
+
+### Memory Issues
+
+Increase Node.js memory limit:
+
+```json
+{
+  "scripts": {
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' ryunix build"
+  }
+}
+```
+
+### ESLint Errors
+
+Disable ESLint during build:
+
+```javascript
+module.exports = {
+  eslint: false
+}
+```
+
+### Hot Reload Not Working
+
+Check firewall settings or try:
+
+```javascript
+module.exports = {
+  webpack: {
+    devServer: {
+      allowedHosts: 'all'
+    }
+  }
+}
+```
+
+## Migration Guide
+
+### From Legacy to Modern Config
+
+**Before:**
+```javascript
+module.exports = {
+  experimental: {
+    ssr: true
+  }
+}
+```
+
+**After:**
+```javascript
+module.exports = {
+  ssr: true
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Library" icon="cube" href="/packages/ryunixjs">
+    Learn about the runtime API and hooks
+  </Card>
+
+</CardGroup>

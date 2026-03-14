@@ -1,0 +1,154 @@
+---
+title: Introduction
+description: Learn about RyunixJS, a powerful, standalone, and high-performance JavaScript framework for building modern web applications.
+---
+
+## What is RyunixJS?
+
+RyunixJS is a modern UI framework designed to be **completely standalone**. While it draws inspiration from popular libraries like React and Preact, it doesn't include them internally. It provides a familiar API (Hooks, Components) but follows its own path to allow for a more manageable and moldable development experience.
+
+Whether you're building a simple static site or a complex Single Page Application (SPA) with Server-Side Rendering (SSR), RyunixJS gives you the tools to do it efficiently.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Zero Dependencies" icon="feather">
+    The core library is lightweight and independent, with no external dependencies required.
+  </Card>
+  
+  <Card title="Familiar API" icon="code">
+    Use `useStore`, `useEffect`, `useContext`, and more. While similar to React, Ryunix provides its own specialized hooks.
+  </Card>
+  
+  <Card title="Hybrid Rendering" icon="server">
+    Built-in support for **SSR** (Server-Side Rendering) and **SSG** (Static Site Generation).
+  </Card>
+  
+  <Card title="Server-Side Power" icon="bolt">
+    Supports **Server Components** and **Server Actions** for modern full-stack workflows.
+  </Card>
+  
+  <Card title="Native MDX" icon="book">
+    Write documentation or content-rich pages directly in MDX with seamless integration.
+  </Card>
+  
+  <Card title="Specialized Hooks" icon="puzzle-piece">
+    Includes powerful built-ins like `usePersistentStore`, `useSwitch`, `useDebounce`, `useThrottle`, and more.
+  </Card>
+  
+  <Card title="Integrated Tooling" icon="wrench">
+    Powerful presets and a dedicated CLI to get you started in seconds.
+  </Card>
+  
+  <Card title="DevTools" icon="magnifying-glass">
+    A dedicated browser extension to debug your Ryunix applications.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Fiber-Based Reconciliation Engine
+
+At the heart of RyunixJS is a powerful reconciliation engine built on a fiber architecture. This architecture enables:
+
+- **Efficient DOM Updates**: By comparing Virtual DOM trees, RyunixJS minimizes actual DOM manipulations
+- **Concurrent Rendering**: Support for prioritized updates and transitions using `useTransition` and `useDeferredValue`
+- **Incremental Rendering**: The ability to pause, abort, or resume rendering work
+- **Priority-Based Scheduling**: Updates can be classified by priority (IMMEDIATE, NORMAL, LOW) for optimal user experience
+
+The reconciler intelligently determines what parts of the UI need to update, making your applications fast and responsive even with complex component trees.
+
+### Hooks System
+
+RyunixJS provides a comprehensive hooks system for state and lifecycle management:
+
+**Core Hooks:**
+- `useStore` - State management (Ryunix equivalent of `useState`)
+- `useReducer` - Advanced state management with reducers
+- `useEffect` - Side effects management
+- `useLayoutEffect` - Synchronous side effects before browser paint
+- `useRef` - Persistent reference across renders
+- `useMemo` - Memoized values
+- `useCallback` - Memoized functions
+- `useContext` - Consumes a context value
+- `useId` - Generates unique, stable IDs for SSR
+
+**Specialized Hooks:**
+- `usePersistentStore` - Automatically syncs state with `localStorage`
+- `useSwitch` - Optimized toggle state hook
+- `useDebounce` - Debounces a value update
+- `useThrottle` - Throttles value updates
+- `useQuery` / `useHash` - Reactive URL parameters and hash
+
+**Concurrency Hooks:**
+- `useTransition` - Mark updates as non-urgent
+- `useDeferredValue` - Defer value updates
+
+### Server-Side Rendering
+
+RyunixJS includes built-in SSR capabilities for both Node.js and Edge environments:
+
+- `renderToString` - Synchronous server rendering
+- `renderToReadableStream` - Streaming server rendering
+- `hydrate` - Hydrate server-rendered HTML
+- `hydrateIslands` - Island-based hydration for partial interactivity
+
+## Monorepo Structure
+
+RyunixJS is managed as a monorepo containing several specialized packages:
+
+<CardGroup cols={2}>
+  <Card title="@unsetsoft/ryunixjs" icon="cube">
+    The core library containing the reconciler, hooks, and DOM utilities.
+  </Card>
+  
+  <Card title="@unsetsoft/ryunix-presets" icon="sliders">
+    Unified tooling and Webpack configurations for different environments.
+  </Card>
+  
+  <Card title="@unsetsoft/cra" icon="terminal">
+    The Official CLI to scaffold new Ryunix projects effortlessly.
+  </Card>
+  
+  <Card title="@unsetsoft/ryunix-devtools" icon="bug">
+    Browser extension for debugging and inspecting component trees.
+  </Card>
+</CardGroup>
+
+## Key Differentiators
+
+### 1. Standalone Architecture
+
+Unlike many frameworks that build on top of React or other libraries, RyunixJS is built from the ground up. This means:
+
+- Complete control over the rendering pipeline
+- No dependency conflicts or version mismatches
+- Smaller bundle sizes for your applications
+- Freedom to innovate without being constrained by external APIs
+
+### 2. Built-in Full-Stack Features
+
+While many frameworks require additional libraries for SSR, routing, or state persistence, RyunixJS includes these features out of the box:
+
+- Server Components and Server Actions
+- Built-in routing with `RouterProvider`, `Link`, and `NavLink`
+- Persistent state management with `usePersistentStore`
+- MDX support for content-rich applications
+
+### 3. Developer Experience
+
+RyunixJS is designed with developer experience in mind:
+
+- Intuitive CLI with project templates
+- Hot module replacement for instant feedback
+- Comprehensive error boundaries (`ErrorBoundary`, `ServerBoundary`)
+- Browser DevTools extension for debugging
+- Familiar API for developers coming from React
+
+## Getting Started
+
+Ready to build your first RyunixJS application? Check out the [Quickstart](/quickstart) guide to create your first app in minutes, or dive into the [Installation](/installation) guide for manual setup options.
+
+<Note>
+  RyunixJS requires Node.js version 20, 22, or 24. Make sure you have a compatible version installed before proceeding.
+</Note>

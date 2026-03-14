@@ -1,0 +1,527 @@
+---
+title: 'forwardRef'
+description: 'Forward refs to child components'
+icon: 'arrow-right-to-bracket'
+---
+
+## Overview
+
+`forwardRef` allows parent components to pass a `ref` to a child component, enabling direct access to the child's DOM element or component instance. This is essential for imperative actions like focusing inputs or measuring elements.
+
+## Import
+
+```javascript
+import { forwardRef } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+const forwardRef = (render) => {
+  if (typeof render !== 'function') {
+    throw new Error('forwardRef requires a render function')
+  }
+
+  const ForwardRefComponent = (props) => {
+    const { ref, ...restProps } = props || {}
+    return render(restProps, ref || null)
+  }
+
+  ForwardRefComponent.displayName = `ForwardRef(${render.displayName || render.name || 'Component'})`
+  ForwardRefComponent._isForwardRef = true
+  ForwardRefComponent._render = render
+
+  return ForwardRefComponent
+}
+```
+
+## Parameters
+
+<ParamField path="render" type="Function" required>
+  A function component that receives `(props, ref)` as arguments. The function should attach the ref to the desired element.
+</ParamField>
+
+## Returns
+
+<ResponseField name="ForwardRefComponent" type="Function">
+  A component that forwards refs. Marked with `_isForwardRef = true` and includes the original render function in `_render`.
+</ResponseField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { forwardRef, useRef } from 'ryunix'
+
+const Input = forwardRef((props, ref) => {
+  return <input ref={ref} {...props} />
+})
+
+const Form = () => {
+  const inputRef = useRef(null)
+  
+  const handleFocus = () => {
+    inputRef.current.focus()
+  }
+  
+  return (
+    <div>
+      <Input ref={inputRef} placeholder="Enter name" />
+      <button onClick={handleFocus}>Focus Input</button>
+    </div>
+  )
+}
+```
+
+```jsx Custom Input Component
+import { forwardRef } from 'ryunix'
+
+const TextInput = forwardRef((props, ref) => {
+  const { label, error, ...inputProps } = props
+  
+  return (
+    <div className="input-group">
+      {label && <label>{label}</label>}
+      <input ref={ref} {...inputProps} />
+      {error && <span className="error">{error}</span>}
+    </div>
+  )
+})
+
+const App = () => {
+  const inputRef = useRef(null)
+  
+  return (
+    <TextInput 
+      ref={inputRef}
+      label="Username"
+      placeholder="Enter username"
+    />
+  )
+}
+```
+
+```jsx Focus Management
+import { forwardRef, useRef, useEffect } from 'ryunix'
+
+const AutoFocusInput = forwardRef((props, ref) => {
+  return <input ref={ref} {...props} />
+})
+
+const Modal = ({ isOpen }) => {
+  const inputRef = useRef(null)
+  
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [isOpen])
+  
+  return (
+    <div className="modal">
+      <AutoFocusInput ref={inputRef} placeholder="Search..." />
+    </div>
+  )
+}
+```
+
+```jsx Measuring Elements
+import { forwardRef, useRef, useEffect, useStore } from 'ryunix'
+
+const MeasurableDiv = forwardRef((props, ref) => {
+  return <div ref={ref} {...props} />
+})
+
+const App = () => {
+  const divRef = useRef(null)
+  const [dimensions, setDimensions] = useStore({ width: 0, height: 0 })
+  
+  useEffect(() => {
+    if (divRef.current) {
+      const { width, height } = divRef.current.getBoundingClientRect()
+      setDimensions({ width, height })
+    }
+  }, [])
+  
+  return (
+    <div>
+      <MeasurableDiv ref={divRef} className="box">
+        Content
+      </MeasurableDiv>
+      <p>Size: {dimensions.width}x{dimensions.height}</p>
+    </div>
+  )
+}
+```
+
+```jsx Video Player Control
+import { forwardRef, useRef } from 'ryunix'
+
+const VideoPlayer = forwardRef((props, ref) => {
+  const { src, ...videoProps } = props
+  
+  return (
+    <video ref={ref} src={src} {...videoProps}>
+      Your browser doesn't support video.
+    </video>
+  )
+})
+
+const App = () => {
+  const videoRef = useRef(null)
+  
+  const handlePlay = () => {
+    videoRef.current.play()
+  }
+  
+  const handlePause = () => {
+    videoRef.current.pause()
+  }
+  
+  return (
+    <div>
+      <VideoPlayer ref={videoRef} src="video.mp4" />
+      <button onClick={handlePlay}>Play</button>
+      <button onClick={handlePause}>Pause</button>
+    </div>
+  )
+}
+```
+
+</CodeGroup>
+
+## Advanced Patterns
+
+### Combining with useImperativeHandle
+
+```jsx
+import { forwardRef, useRef, useImperativeHandle } from 'ryunix'
+
+const FancyInput = forwardRef((props, ref) => {
+  const inputRef = useRef(null)
+  
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current.focus()
+    },
+    clear: () => {
+      inputRef.current.value = ''
+    },
+    getValue: () => {
+      return inputRef.current.value
+    }
+  }))
+  
+  return <input ref={inputRef} {...props} />
+})
+
+const Form = () => {
+  const inputRef = useRef(null)
+  
+  const handleSubmit = () => {
+    const value = inputRef.current.getValue()
+    console.log('Value:', value)
+    inputRef.current.clear()
+  }
+  
+  return (
+    <div>
+      <FancyInput ref={inputRef} />
+      <button onClick={handleSubmit}>Submit</button>
+    </div>
+  )
+}
+```
+
+### Multiple Refs
+
+```jsx
+import { forwardRef, useRef } from 'ryunix'
+
+const Button = forwardRef((props, ref) => {
+  const internalRef = useRef(null)
+  
+  // Use both internal and forwarded ref
+  const setRefs = (element) => {
+    internalRef.current = element
+    if (ref) {
+      if (typeof ref === 'function') {
+        ref(element)
+      } else {
+        ref.current = element
+      }
+    }
+  }
+  
+  return <button ref={setRefs} {...props} />
+})
+```
+
+### Conditional Ref Forwarding
+
+```jsx
+import { forwardRef } from 'ryunix'
+
+const ConditionalInput = forwardRef((props, ref) => {
+  const { type, ...rest } = props
+  
+  if (type === 'textarea') {
+    return <textarea ref={ref} {...rest} />
+  }
+  
+  return <input ref={ref} type={type} {...rest} />
+})
+
+const App = () => {
+  const inputRef = useRef(null)
+  
+  return (
+    <div>
+      <ConditionalInput ref={inputRef} type="text" />
+      <ConditionalInput ref={inputRef} type="textarea" />
+    </div>
+  )
+}
+```
+
+### Component Library Pattern
+
+```jsx
+import { forwardRef } from 'ryunix'
+
+const Button = forwardRef((props, ref) => {
+  const { variant = 'primary', size = 'medium', ...rest } = props
+  
+  const className = `btn btn-${variant} btn-${size}`
+  
+  return <button ref={ref} className={className} {...rest} />
+})
+
+Button.displayName = 'Button'
+
+const Card = forwardRef((props, ref) => {
+  return <div ref={ref} className="card" {...props} />
+})
+
+Card.displayName = 'Card'
+
+// Usage
+const App = () => {
+  const buttonRef = useRef(null)
+  const cardRef = useRef(null)
+  
+  return (
+    <Card ref={cardRef}>
+      <Button ref={buttonRef} variant="primary" size="large">
+        Click me
+      </Button>
+    </Card>
+  )
+}
+```
+
+### Animation Integration
+
+```jsx
+import { forwardRef, useRef, useEffect } from 'ryunix'
+
+const AnimatedBox = forwardRef((props, ref) => {
+  return <div ref={ref} className="box" {...props} />
+})
+
+const App = () => {
+  const boxRef = useRef(null)
+  
+  useEffect(() => {
+    if (boxRef.current) {
+      // Animate with GSAP, Framer Motion, etc.
+      boxRef.current.animate(
+        [{ opacity: 0 }, { opacity: 1 }],
+        { duration: 1000 }
+      )
+    }
+  }, [])
+  
+  return <AnimatedBox ref={boxRef}>Animated content</AnimatedBox>
+}
+```
+
+## Display Name
+
+ForwardRef components automatically get a display name:
+
+```javascript
+const Input = forwardRef((props, ref) => {
+  return <input ref={ref} {...props} />
+})
+
+Input.displayName = 'CustomInput'
+// Component appears as ForwardRef(CustomInput) in dev tools
+
+// Or let forwardRef generate it:
+function MyInput(props, ref) {
+  return <input ref={ref} {...props} />
+}
+
+const ForwardedInput = forwardRef(MyInput)
+// Component appears as ForwardRef(MyInput)
+```
+
+## Common Use Cases
+
+### 1. Form Input Management
+
+```jsx
+const Input = forwardRef((props, ref) => {
+  return <input ref={ref} {...props} />
+})
+
+const LoginForm = () => {
+  const emailRef = useRef(null)
+  const passwordRef = useRef(null)
+  
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const email = emailRef.current.value
+    const password = passwordRef.current.value
+    // Submit logic
+  }
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <Input ref={emailRef} type="email" />
+      <Input ref={passwordRef} type="password" />
+      <button type="submit">Login</button>
+    </form>
+  )
+}
+```
+
+### 2. Scroll Control
+
+```jsx
+const ScrollableList = forwardRef((props, ref) => {
+  return (
+    <div ref={ref} className="scrollable-list">
+      {props.children}
+    </div>
+  )
+})
+
+const App = () => {
+  const listRef = useRef(null)
+  
+  const scrollToTop = () => {
+    listRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  
+  return (
+    <div>
+      <ScrollableList ref={listRef}>
+        {items.map(item => <div key={item.id}>{item.name}</div>)}
+      </ScrollableList>
+      <button onClick={scrollToTop}>Scroll to Top</button>
+    </div>
+  )
+}
+```
+
+### 3. Canvas Manipulation
+
+```jsx
+const Canvas = forwardRef((props, ref) => {
+  return <canvas ref={ref} {...props} />
+})
+
+const App = () => {
+  const canvasRef = useRef(null)
+  
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    
+    // Draw on canvas
+    ctx.fillStyle = 'blue'
+    ctx.fillRect(0, 0, 100, 100)
+  }, [])
+  
+  return <Canvas ref={canvasRef} width={400} height={400} />
+}
+```
+
+## Error Handling
+
+```javascript
+const forwardRef = (render) => {
+  if (typeof render !== 'function') {
+    throw new Error('forwardRef requires a render function')
+  }
+  // ...
+}
+```
+
+<Warning>
+  `forwardRef` throws an error if the render argument is not a function.
+</Warning>
+
+## Best Practices
+
+<Tip>
+  Always set a `displayName` for better debugging experience in React DevTools.
+</Tip>
+
+<Tip>
+  Use `forwardRef` when creating reusable component libraries to allow consumers to access underlying DOM elements.
+</Tip>
+
+<Note>
+  The ref is automatically set to `null` if not provided, so you don't need to check for its existence before using it.
+</Note>
+
+<Warning>
+  Don't overuse refs for things that can be done declaratively. Use refs for imperative actions like focus, selection, or measurements.
+</Warning>
+
+## TypeScript Support
+
+```typescript
+import { forwardRef, Ref } from 'ryunix'
+
+interface InputProps {
+  label: string
+  error?: string
+}
+
+const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ label, error, ...props }, ref) => {
+    return (
+      <div>
+        <label>{label}</label>
+        <input ref={ref} {...props} />
+        {error && <span>{error}</span>}
+      </div>
+    )
+  }
+)
+
+// Usage with proper typing
+const App = () => {
+  const inputRef = useRef<HTMLInputElement>(null)
+  
+  return <Input ref={inputRef} label="Username" />
+}
+```
+
+## Internal Properties
+
+```javascript
+ForwardRefComponent._isForwardRef = true     // Marker for identification
+ForwardRefComponent._render = render         // Original render function
+ForwardRefComponent.displayName = `ForwardRef(...)` // Dev tools name
+```
+
+## Related
+
+- [useRef](/api/hooks/useRef)
+- useImperativeHandle - Advanced ref customization (see forwardRef examples above for ref usage patterns)

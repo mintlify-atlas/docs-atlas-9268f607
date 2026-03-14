@@ -1,0 +1,501 @@
+---
+title: 'useRouter'
+description: 'Access routing context for navigation, params, and location'
+icon: 'route'
+---
+
+## Overview
+
+`useRouter` provides access to the routing context in RyunixJS applications. It returns the current location, route parameters, query parameters, and navigation functions.
+
+This hook must be used within a `RouterProvider` component.
+
+## Signature
+
+```typescript
+function useRouter(): {
+  location: string
+  params: Record<string, string | string[]>
+  query: Record<string, string>
+  navigate: (path: string) => void
+  route: Route | null
+}
+```
+
+## Parameters
+
+This hook takes no parameters.
+
+## Returns
+
+<ResponseField name="location" type="string">
+  The current pathname (e.g., `/users/123`)
+</ResponseField>
+
+<ResponseField name="params" type="Record<string, string | string[]>">
+  Route parameters extracted from dynamic routes. Values can be strings or arrays for catch-all routes.
+  
+  ```javascript
+  // Route: /users/:id
+  // URL: /users/123
+  params // { id: '123' }
+  
+  // Route: /docs/:...slug
+  // URL: /docs/guides/getting-started
+  params // { slug: ['guides', 'getting-started'] }
+  ```
+</ResponseField>
+
+<ResponseField name="query" type="Record<string, string>">
+  Query parameters from the URL search string.
+  
+  ```javascript
+  // URL: /search?q=hello&sort=date
+  query // { q: 'hello', sort: 'date' }
+  ```
+</ResponseField>
+
+<ResponseField name="navigate" type="(path: string) => void">
+  Function to programmatically navigate to a different route.
+</ResponseField>
+
+<ResponseField name="route" type="Route | null">
+  The current matched route object, or `null` if no route matches.
+</ResponseField>
+
+## Usage
+
+### Basic Navigation
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+function Navigation() {
+  const { location, navigate } = useRouter()
+
+  return (
+    <nav>
+      <button onClick={() => navigate('/')}>Home</button>
+      <button onClick={() => navigate('/about')}>About</button>
+      <button onClick={() => navigate('/blog')}>Blog</button>
+      <p>Current: {location}</p>
+    </nav>
+  )
+}
+```
+
+### Accessing Route Parameters
+
+```jsx
+import { useRouter, useStore, useEffect } from '@ryunixjs/core'
+
+function UserProfile() {
+  const { params } = useRouter()
+  const [user, setUser] = useStore(null)
+
+  useEffect(() => {
+    // params.id comes from route definition: /users/:id
+    fetch(`/api/users/${params.id}`)
+      .then(res => res.json())
+      .then(setUser)
+  }, [params.id])
+
+  if (!user) return <div>Loading...</div>
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>User ID: {params.id}</p>
+    </div>
+  )
+}
+```
+
+### Using Query Parameters
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+function SearchResults() {
+  const { query } = useRouter()
+  const searchTerm = query.q || ''
+  const sortOrder = query.sort || 'relevance'
+
+  return (
+    <div>
+      <h1>Search Results for: {searchTerm}</h1>
+      <p>Sorted by: {sortOrder}</p>
+      {/* Render results */}
+    </div>
+  )
+}
+```
+
+### Programmatic Navigation
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+function LoginForm() {
+  const { navigate } = useRouter()
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const success = await login(credentials)
+    
+    if (success) {
+      navigate('/dashboard')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* form fields */}
+      <button type="submit">Login</button>
+    </form>
+  )
+}
+```
+
+### Catch-All Routes
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+// Route definition: /docs/:...slug
+function DocsPage() {
+  const { params } = useRouter()
+  const slug = params.slug // ['guides', 'getting-started']
+  const path = slug.join('/') // 'guides/getting-started'
+
+  return (
+    <div>
+      <h1>Documentation</h1>
+      <p>Path: {path}</p>
+    </div>
+  )
+}
+```
+
+### Conditional Navigation
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+function ProtectedRoute({ children }) {
+  const { navigate } = useRouter()
+  const isAuthenticated = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login')
+    }
+  }, [isAuthenticated, navigate])
+
+  return isAuthenticated ? children : null
+}
+```
+
+### Active Link Detection
+
+```jsx
+import { useRouter } from '@ryunixjs/core'
+
+function NavLink({ to, exact = false, children }) {
+  const { location } = useRouter()
+  const isActive = exact 
+    ? location === to 
+    : location.startsWith(to)
+
+  return (
+    <a 
+      href={to}
+      className={isActive ? 'active' : ''}
+    >
+      {children}
+    </a>
+  )
+}
+```
+
+## Router Context Implementation
+
+The router context is created with default values:
+
+```javascript
+const RouterContext = createContext('ryunix.navigation', {
+  location: '/',
+  params: {},
+  query: {},
+  navigate: (path) => {},
+  route: null,
+})
+```
+
+Source: `packages/core/src/lib/hooks.js:421-427`
+
+## useRouter Implementation
+
+```javascript
+const useRouter = () => {
+  return RouterContext.useContext('ryunix.navigation')
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:519-521`
+
+<Note>
+  `useRouter` is a convenience wrapper around the RouterContext. You can also use `RouterContext.useContext()` directly.
+</Note>
+
+## RouterProvider
+
+The `RouterProvider` component sets up the routing context:
+
+```jsx
+import { RouterProvider } from '@ryunixjs/core'
+
+const routes = [
+  { path: '/', component: Home },
+  { path: '/about', component: About },
+  { path: '/users/:id', component: UserProfile },
+  { path: '/docs/:...slug', component: Docs },
+]
+
+function App() {
+  return (
+    <RouterProvider routes={routes}>
+      <Navigation />
+      <Children />
+    </RouterProvider>
+  )
+}
+```
+
+## Route Matching
+
+Routes are matched using pattern matching:
+
+```javascript
+const findRoute = (routes, path) => {
+  const pathname = path.split('?')[0].split('#')[0]
+  
+  for (const route of routes) {
+    const keys = []
+    const pattern = new RegExp(
+      `^${route.path.replace(/:(\.\.\.)?(\w+)/g, (match, isCatchAll, key) => {
+        keys.push({ key, isCatchAll: !!isCatchAll })
+        return isCatchAll ? '(.+)' : '([^/]+)'
+      })}$`,
+    )
+
+    const matchPath = pathname.match(pattern)
+    if (matchPath) {
+      const params = keys.reduce((acc, keyObj, index) => {
+        const val = matchPath[index + 1]
+        acc[keyObj.key] = keyObj.isCatchAll && val ? val.split('/') : val
+        return acc
+      }, {})
+      return { route, params }
+    }
+  }
+  return notFound
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:429-463`
+
+## Navigation Behavior
+
+The `navigate` function handles both SPA and MPA navigation:
+
+```javascript
+const navigate = (path) => {
+  if (typeof window !== 'undefined' && window.__RYUNIX_MPA__) {
+    window.location.assign(path)
+    return
+  }
+  window.history.pushState({}, '', path)
+  setLocation(path)
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:486-493`
+
+<Note>
+  If `window.__RYUNIX_MPA__` is set, navigation uses traditional page loads instead of SPA navigation.
+</Note>
+
+## URL Utilities
+
+### usePathname
+
+Get just the pathname without query/hash:
+
+```javascript
+import { usePathname } from '@ryunixjs/core'
+
+function Component() {
+  const pathname = usePathname()
+  // URL: /search?q=hello#results
+  // pathname: /search
+  return <div>{pathname}</div>
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:556-559`
+
+### useSearchParams
+
+Get URLSearchParams object:
+
+```javascript
+import { useSearchParams } from '@ryunixjs/core'
+
+function Component() {
+  const searchParams = useSearchParams()
+  const query = searchParams.get('q')
+  return <div>Search: {query}</div>
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:564-567`
+
+### useQuery
+
+Get query parameters as an object:
+
+```javascript
+import { useQuery } from '@ryunixjs/core'
+
+function Component() {
+  const query = useQuery()
+  // URL: /search?q=hello&sort=date
+  // query: { q: 'hello', sort: 'date' }
+  return <div>Search: {query.q}</div>
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:317-326`
+
+### useHash
+
+Get and track URL hash:
+
+```javascript
+import { useHash } from '@ryunixjs/core'
+
+function Component() {
+  const hash = useHash()
+  // URL: /page#section
+  // hash: #section
+  return <div>Hash: {hash}</div>
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:336-346`
+
+## Link Components
+
+RyunixJS provides Link and NavLink components:
+
+### Link
+
+```jsx
+import { Link } from '@ryunixjs/core'
+
+function Navigation() {
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      <Link to="/about" prefetch={true}>About</Link>
+      <Link to="/contact">Contact</Link>
+    </nav>
+  )
+}
+```
+
+### NavLink
+
+```jsx
+import { NavLink } from '@ryunixjs/core'
+
+function Navigation() {
+  return (
+    <nav>
+      <NavLink to="/" exact>Home</NavLink>
+      <NavLink to="/about">About</NavLink>
+      <NavLink 
+        to="/blog" 
+        className={({ isActive }) => isActive ? 'active' : ''}
+      >
+        Blog
+      </NavLink>
+    </nav>
+  )
+}
+```
+
+## Route Configuration
+
+### Basic Routes
+
+```javascript
+const routes = [
+  { path: '/', component: Home },
+  { path: '/about', component: About },
+  { path: '/blog', component: Blog },
+]
+```
+
+### Dynamic Routes
+
+```javascript
+const routes = [
+  { path: '/users/:id', component: UserProfile },
+  { path: '/posts/:slug', component: BlogPost },
+]
+```
+
+### Catch-All Routes
+
+```javascript
+const routes = [
+  { path: '/docs/:...slug', component: Docs },
+  { path: '*', NotFound: NotFoundPage }, // 404 catch-all
+]
+```
+
+### Nested Routes
+
+```javascript
+const routes = [
+  {
+    path: '/dashboard',
+    component: Dashboard,
+    subRoutes: [
+      { path: '/dashboard/profile', component: Profile },
+      { path: '/dashboard/settings', component: Settings },
+    ]
+  }
+]
+```
+
+## Related Components
+
+RyunixJS provides Link and NavLink components for declarative navigation (see the Link and NavLink sections above for examples).
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useTransition" icon="hourglass" href="./useTransition">
+    Smooth route transitions
+  </Card>
+  <Card title="useEffect" icon="bolt" href="./useEffect">
+    React to route changes
+  </Card>
+</CardGroup>
+
+## See Also
+
+- Check the "URL Utilities" section above for related hooks like usePathname, useSearchParams, useQuery, and useHash

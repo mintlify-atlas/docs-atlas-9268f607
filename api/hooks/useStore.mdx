@@ -1,0 +1,189 @@
+---
+title: 'useStore'
+description: 'State management hook for managing component state with reducer-like updates'
+icon: 'database'
+---
+
+## Overview
+
+`useStore` is RyunixJS's primary state management hook. It provides a simple API for managing component state that supports both direct state updates and functional updates (similar to `setState` in React).
+
+Under the hood, `useStore` uses `useReducer` with a flexible reducer that accepts both values and update functions.
+
+## Signature
+
+```typescript
+function useStore<T>(initialState: T | (() => T)): [T, (action: T | ((prevState: T) => T)) => void]
+```
+
+## Parameters
+
+<ParamField path="initialState" type="T | (() => T)" required>
+  The initial state value, or a function that returns the initial state. The function form is useful for expensive computations that should only run once.
+
+  **Examples:**
+  - Direct value: `useStore(0)`
+  - Function: `useStore(() => computeExpensiveValue())`
+</ParamField>
+
+## Returns
+
+Returns a tuple with two elements:
+
+<ResponseField name="[0]" type="T">
+  The current state value
+</ResponseField>
+
+<ResponseField name="[1]" type="(action: T | ((prevState: T) => T)) => void">
+  The dispatch function to update state. Accepts either:
+  - A new state value directly
+  - A function that receives the previous state and returns the new state
+</ResponseField>
+
+## Usage
+
+### Basic Usage
+
+```jsx
+import { useStore } from '@ryunixjs/core'
+
+function Counter() {
+  const [count, setCount] = useStore(0)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+### Functional Updates
+
+Use functional updates when the new state depends on the previous state:
+
+```jsx
+import { useStore } from '@ryunixjs/core'
+
+function Counter() {
+  const [count, setCount] = useStore(0)
+
+  const increment = () => {
+    // ✅ Recommended: Functional update
+    setCount(prev => prev + 1)
+  }
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={increment}>Increment</button>
+    </div>
+  )
+}
+```
+
+<Note>
+  Functional updates are safer when multiple updates might occur in quick succession, as they always work with the latest state value.
+</Note>
+
+### Lazy Initialization
+
+For expensive initial state calculations, use the function form:
+
+```jsx
+import { useStore } from '@ryunixjs/core'
+
+function DataTable() {
+  // The function only runs once during initial render
+  const [data, setData] = useStore(() => {
+    return processLargeDataset(rawData)
+  })
+
+  return <table>{/* render data */}</table>
+}
+```
+
+### Complex State Objects
+
+```jsx
+import { useStore } from '@ryunixjs/core'
+
+function UserProfile() {
+  const [user, setUser] = useStore({
+    name: '',
+    email: '',
+    preferences: {}
+  })
+
+  const updateName = (name) => {
+    setUser(prev => ({ ...prev, name }))
+  }
+
+  const updateEmail = (email) => {
+    setUser(prev => ({ ...prev, email }))
+  }
+
+  return (
+    <form>
+      <input 
+        value={user.name} 
+        onChange={(e) => updateName(e.target.value)} 
+      />
+      <input 
+        value={user.email} 
+        onChange={(e) => updateEmail(e.target.value)} 
+      />
+    </form>
+  )
+}
+```
+
+## SSR Behavior
+
+During server-side rendering, `useStore` returns the initial state and a no-op dispatch function:
+
+```javascript
+// On server
+if (state.isServerRendering) {
+  return [
+    is.function(initialState) ? initialState() : initialState, 
+    () => {}
+  ]
+}
+```
+
+<Warning>
+  State updates triggered during SSR will be ignored. Ensure your components handle this gracefully.
+</Warning>
+
+## Implementation Details
+
+`useStore` is implemented as a thin wrapper around `useReducer`:
+
+```javascript
+const useStore = (initialState) => {
+  const reducer = (state, action) =>
+    is.function(action) ? action(state) : action
+  return useReducer(reducer, initialState)
+}
+```
+
+Source: `packages/core/src/lib/hooks.js:25-34`
+
+## Related Hooks
+
+<CardGroup cols={2}>
+  <Card title="useReducer" icon="arrows-rotate" href="./useReducer">
+    For more complex state logic with defined action types
+  </Card>
+  <Card title="usePersistentStore" icon="floppy-disk" href="./usePersistentStore">
+    For state that persists to localStorage
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [useReducer](/api/hooks/useReducer)
+- [usePersistentStore](/api/hooks/usePersistentStore)
+- See the examples above for state management patterns

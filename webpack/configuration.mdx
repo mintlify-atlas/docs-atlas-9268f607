@@ -1,0 +1,518 @@
+---
+title: Webpack Configuration
+description: Understanding Ryunix's dual-compiler Webpack architecture and core configuration options
+---
+
+The `@unsetsoft/ryunix-presets` package provides a complete Webpack configuration optimized for full-stack Ryunix applications with support for SSR, SSG, and client-side rendering.
+
+## Dual Compiler Architecture
+
+Ryunix uses Webpack's multi-compiler mode when Server-Side Rendering (SSR) is enabled or Static Site Generation (SSG) is required. This architecture compiles both client and server targets simultaneously.
+
+<CardGroup cols={2}>
+  <Card title="Client Compiler" icon="browser">
+    Generates optimized browser bundles with HMR support, CSS extraction, and code splitting
+  </Card>
+  <Card title="Server Compiler" icon="server">
+    Compiles for Node.js with ES Module output for SSR and SSG rendering
+  </Card>
+</CardGroup>
+
+### Client Configuration (`clientConfig`)
+
+The client compiler targets the browser and includes:
+
+- **Output Directory**: `.ryunix/static/`
+- **Target**: `web` (browser environment)
+- **Hot Module Replacement**: Enabled via `webpack-dev-server`
+- **CSS Extraction**: Uses `MiniCssExtractPlugin` in production
+- **Optimization**: `TerserPlugin` for JavaScript and `CssMinimizerPlugin` for CSS
+
+```javascript webpack.config.mjs
+const clientConfig = {
+  name: 'client',
+  target: 'web',
+  entry: '.ryunix/server/app/main.ryx',
+  output: {
+    path: '.ryunix/static',
+    publicPath: '/',
+    filename: './chunks/[name].[contenthash:8].bundle.js',
+    chunkFilename: './chunks/[name].[contenthash:8].chunk.js',
+  },
+  // ...
+}
+```
+
+### Server Configuration (`serverConfig`)
+
+The server compiler generates Node.js modules for SSR/SSG:
+
+- **Output Directory**: `.ryunix/server/`
+- **Target**: `node` (Node.js environment)
+- **Output Format**: ES Modules (`experiments.outputModule: true`)
+- **CSS Handling**: CSS imports return source strings without extraction
+- **Optimization**: Minimization disabled for faster builds and debugging
+
+```javascript webpack.config.mjs
+const serverConfig = {
+  name: 'server',
+  target: 'node',
+  entry: '.ryunix/server/app/app-router-server.js',
+  output: {
+    path: '.ryunix/server',
+    filename: 'app-router-server.bundle.mjs',
+    library: { type: 'module' },
+    chunkFormat: 'module',
+  },
+  experiments: {
+    outputModule: true,
+  },
+  // ...
+}
+```
+
+## Core Configuration Options
+
+### Cache Strategy
+
+Ryunix uses filesystem caching to dramatically improve rebuild times:
+
+```javascript webpack.config.mjs
+cache: {
+  type: 'filesystem',
+  version: ENV_HASH(getEnviroment()),
+  cacheDirectory: '.ryunix/cache/webpack',
+  store: 'pack',
+  buildDependencies: {
+    defaultWebpack: ['webpack/lib/'],
+    config: [__filename],
+  },
+}
+```
+
+<Note>
+The cache is versioned by environment variables hash. Changing `.env` values will invalidate the cache automatically.
+</Note>
+
+### Code Splitting Configuration
+
+Optimized chunk splitting strategy for optimal loading performance:
+
+```javascript webpack.config.mjs
+optimization: {
+  moduleIds: 'deterministic',
+  runtimeChunk: 'single',
+  splitChunks: {
+    chunks: 'all',
+    minSize: 20000,
+    maxSize: 244000,
+    cacheGroups: {
+      framework: {
+        test: /[\\/]node_modules[\\/](@unsetsoft[\\/]ryunixjs)[\\/]/,
+        name: 'framework',
+        priority: 40,
+        enforce: true,
+      },
+      vendor: {
+        test: /[\\/]node_modules[\\/]/,
+        name: 'vendors',
+        priority: 20,
+      },
+      common: {
+        name: 'commons',
+        minChunks: 2,
+        priority: 10,
+        reuseExistingChunk: true,
+      }
+    },
+  },
+}
+```
+
+**Cache Groups Explained:**
+
+- **framework**: Isolates RyunixJS core (~40 priority) for long-term caching
+- **vendor**: Bundles third-party node_modules separately
+- **common**: Shared code used 2+ times across chunks
+
+### Module Resolution
+
+Supported file extensions and alias configuration:
+
+```javascript webpack.config.mjs
+resolve: {
+  extensions: ['.js', '.jsx', '.ryx', '.mdx', '.md'],
+  alias: {
+    '@': './src',
+    '@components': './src/components',
+    // Custom aliases from ryunix.config.js
+  },
+  fallback: {
+    // Node.js polyfills for browser if needed
+  },
+}
+```
+
+<Tip>
+Define custom path aliases in `ryunix.config.js` under `webpack.resolve.alias` to avoid deep relative imports.
+</Tip>
+
+### Environment Variables
+
+Webpack DefinePlugin injects compile-time constants:
+
+```javascript webpack.config.mjs
+new webpack.DefinePlugin({
+  'ryunix.config.env': JSON.stringify(config.env),
+  'process.env.RYUNIX_SSR': JSON.stringify(config.ssr),
+  'process.env.RYUNIX_DEBUG': JSON.stringify(config.debug),
+  'process.env.RYUNIX_IS_SERVER': JSON.stringify(isServer),
+})
+```
+
+Additionally, Ryunix loads `.env` files with the prefix `ryunix.env.RYUNIX_APP_`:
+
+```bash .env
+RYUNIX_APP_API_URL=https://api.example.com
+```
+
+Access in code:
+
+```javascript
+const apiUrl = ryunix.env.RYUNIX_APP_API_URL
+```
+
+## Custom Webpack Plugins
+
+Ryunix includes three specialized plugins that power the routing system:
+
+### AppRouterPlugin
+
+<Card title="AppRouterPlugin" icon="route">
+  Scans the `/app` directory and generates routing configuration with automatic Server/Client component detection
+</Card>
+
+**Configuration:**
+
+```javascript webpack.config.mjs
+new AppRouterPlugin({
+  appDir: './app',
+  outputPath: '.ryunix/server/app/app-router.js',
+  ssgOutputPath: '.ryunix/cache/ssg/routes.json',
+  debug: false
+})
+```
+
+**Features:**
+- Auto-detects Server Components (async exports, `// @server`)
+- Auto-detects Client Components (hooks usage, `// @client`)
+- Maps `layout.ryx`, `error.ryx`, `loading.ryx`, `index.ryx`
+- Aggregates metadata from `generateMetadata()` functions
+
+### ApiRouterPlugin
+
+<Card title="ApiRouterPlugin" icon="code">
+  Scans `/app/api` for route handlers and generates server-side API endpoints
+</Card>
+
+**Configuration:**
+
+```javascript webpack.config.mjs
+new ApiRouterPlugin({
+  appDir: './app',
+  outputPath: '.ryunix/server/api',
+  debug: false
+})
+```
+
+Recognizes these file patterns:
+- `route.js` / `route.mjs`
+- `router.js` / `router.mjs`
+- `endpoint.js` / `endpoint.mjs`
+
+### RyunixRoutesPlugin
+
+<Card title="RyunixRoutesPlugin" icon="file-code">
+  Handles Static Site Generation (SSG) by extracting routes for prerendering
+</Card>
+
+**Configuration:**
+
+```javascript webpack.config.mjs
+new RyunixRoutesPlugin({
+  routesPath: './pages/routes.ryx',
+  outputPath: '.ryunix/cache/ssg/routes.json',
+  debug: false
+})
+```
+
+## Loader Pipeline
+
+Ryunix processes files through multiple loaders:
+
+<Steps>
+  <Step title="thread-loader">
+    Runs subsequent loaders in worker pools for parallel processing
+  </Step>
+  <Step title="ryunix-server-action-loader">
+    Transforms `// @server` files into RPC proxies (client) or action registries (server)
+  </Step>
+  <Step title="ryunix-rsc-loader">
+    Tags Client Components with unique IDs for island hydration
+  </Step>
+  <Step title="babel-loader">
+    Transpiles JSX/modern JavaScript with `@babel/preset-env` and `@babel/preset-react`
+  </Step>
+</Steps>
+
+### JavaScript/JSX/RYX Pipeline
+
+```javascript webpack.config.mjs
+{
+  test: /\.(js|jsx|ryx)$/,
+  exclude: /node_modules/,
+  use: [
+    'thread-loader',
+    './loaders/ryunix-server-action-loader.mjs',
+    './loaders/ryunix-rsc-loader.mjs',
+    {
+      loader: 'babel-loader',
+      options: {
+        presets: [
+          ['@babel/preset-env', {
+            targets: 'defaults and not IE 11',
+            useBuiltIns: false,
+            modules: false,
+            bugfixes: true,
+          }],
+          '@babel/preset-react',
+        ],
+        plugins: [
+          ['@babel/plugin-transform-react-jsx', {
+            pragma: 'Ryunix.createElement',
+            pragmaFrag: 'Ryunix.Fragment',
+          }],
+        ],
+      },
+    },
+  ],
+}
+```
+
+### MDX Support
+
+When `config.mdx` is enabled:
+
+```javascript webpack.config.mjs
+{
+  test: /\.mdx?$/,
+  use: [
+    {
+      loader: '@mdx-js/loader',
+      options: {
+        jsxImportSource: '@unsetsoft/ryunixjs',
+        providerImportSource: '@unsetsoft/ryunixjs',
+        remarkPlugins: [
+          remarkGfm,
+          remarkFrontmatter,
+          [remarkMdxFrontmatter, { name: 'frontmatter' }],
+        ],
+        rehypePlugins: [rehypeHighlight],
+      },
+    },
+  ],
+}
+```
+
+### CSS/SASS Processing
+
+**Client Build:**
+
+```javascript webpack.config.mjs
+{
+  test: /\.(s[ac]ss|css)$/i,
+  exclude: /node_modules/,
+  use: [
+    MiniCssExtractPlugin.loader, // Production
+    // OR
+    'style-loader',              // Development
+    'css-loader',
+    {
+      loader: 'postcss-loader',
+      options: {
+        postcssOptions: {
+          plugins: postcssPlugins, // Loaded from postcss.config.js
+        }
+      }
+    }
+  ],
+}
+```
+
+**Server Build:**
+
+```javascript webpack.config.mjs
+{
+  test: /\.s[ac]ss|css$/i,
+  type: 'asset/source', // Returns CSS as string without extraction
+}
+```
+
+<Warning>
+CSS files are processed differently in server builds. They return source strings and don't emit files, as CSS extraction is handled by the client build.
+</Warning>
+
+## Asset Handling
+
+### Images
+
+```javascript webpack.config.mjs
+{
+  test: /\.(jpg|jpeg|png|gif|svg|ico)$/,
+  exclude: /node_modules/,
+  type: 'asset/resource',
+  generator: {
+    filename: 'images/[name].[hash][ext]',
+  },
+}
+```
+
+### Media Files
+
+```javascript webpack.config.mjs
+{
+  test: /\.(mp3|mp4|pdf)$/,
+  exclude: /node_modules/,
+  type: 'asset/resource',
+  generator: {
+    filename: 'media/[name].[hash][ext]',
+  },
+}
+```
+
+### Fonts
+
+Fonts are automatically handled by Webpack 5's asset modules.
+
+## PostCSS Integration
+
+Ryunix automatically loads `postcss.config.js` from your project root:
+
+```javascript postcss.config.js
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+```
+
+<Note>
+Plugin resolution happens in the user's `node_modules`, ensuring compatibility with pnpm monorepos and Yarn PnP.
+</Note>
+
+## HTML Template Customization
+
+The default HTML template can be customized:
+
+<Steps>
+  <Step title="Extract Template">
+    Run `ryunix customHtml` to copy the default template to `public/index.html`
+  </Step>
+  <Step title="Configure Path">
+    Set `legacy.template: 'public/index.html'` in `ryunix.config.js`
+  </Step>
+  <Step title="Customize">
+    Edit the template with EJS syntax for dynamic values
+  </Step>
+</Steps>
+
+**Template Variables:**
+
+```html public/index.html
+<!DOCTYPE html>
+<html lang="<%= htmlWebpackPlugin.options.pageLang %>">
+  <head>
+    <title><%= htmlWebpackPlugin.options.title %></title>
+    <meta name="description" content="<%= htmlWebpackPlugin.options.meta.description %>" />
+    <!-- Auto-injected CSS and JS chunks -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <%- htmlWebpackPlugin.options.ssrScript %>
+  </body>
+</html>
+```
+
+## Production Optimizations
+
+### Minification
+
+Enabled automatically when `config.webpack.production === true`:
+
+```javascript webpack.config.mjs
+minimizer: [
+  new TerserPlugin({
+    parallel: true,
+    terserOptions: {
+      compress: {
+        dead_code: true,
+        passes: 2,
+      },
+    },
+  }),
+  new CssMinimizerPlugin(),
+]
+```
+
+### Tree Shaking
+
+Webpack automatically removes unused exports when:
+- Using ES Modules (`import`/`export`)
+- `sideEffects: false` in package.json
+- Production mode enabled
+
+### Lazy Compilation (Experimental)
+
+Enable experimental lazy compilation for faster dev server startup:
+
+```javascript ryunix.config.js
+export default {
+  webpack: {
+    experiments: {
+      lazyCompilation: true,
+    },
+  },
+}
+```
+
+<Warning>
+Lazy compilation is experimental and may cause issues with SSR. Use only for large client-only applications.
+</Warning>
+
+## Debugging
+
+Enable debug mode for verbose plugin output:
+
+```javascript ryunix.config.js
+export default {
+  debug: true,
+}
+```
+
+Source maps are enabled automatically in development mode:
+
+```javascript webpack.config.mjs
+devtool: config.webpack.production ? false : 'source-map'
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Routing, SSR & SSG" icon="route" href="/webpack/routing-ssr-ssg">
+    Learn about the routing plugins and rendering strategies
+  </Card>
+  <Card title="Custom Loaders" icon="gear" href="/webpack/loaders">
+    Deep dive into RSC and Server Actions loaders
+  </Card>
+</CardGroup>

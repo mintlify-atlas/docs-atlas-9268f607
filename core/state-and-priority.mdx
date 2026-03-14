@@ -1,0 +1,574 @@
+---
+title: "State & Priority Scheduling"
+description: "Smart priority-based scheduling system for responsive user interfaces"
+icon: "layer-group"
+---
+
+Ryunix introduces a smart priority-based scheduling system on top of its state dispatcher, ensuring that critical user interactions do not drop frames while heavy renders execute.
+
+## Priority Levels
+
+The `Priority` enum defines five tiers of urgency for state updates.
+
+**Source Reference:** `/packages/core/src/lib/priority.js:4`
+
+```javascript
+const Priority = {
+  IMMEDIATE: 1,      // User input (typing, clicks, drags)
+  USER_BLOCKING: 2,  // Hover events, fast scrolls
+  NORMAL: 3,         // Data fetching finishes, generic state updates
+  LOW: 4,            // Analytics events, prefetching data
+  IDLE: 5,           // Off-screen background tasks
+};
+```
+
+<CardGroup cols={2}>
+  <Card title="IMMEDIATE" icon="bolt">
+    **Priority: 1**  
+    User input that requires instant feedback: typing, clicking, dragging. These updates cannot be delayed.
+  </Card>
+  
+  <Card title="USER_BLOCKING" icon="hand">
+    **Priority: 2**  
+    Interactions that users notice but can tolerate slight delay: hover states, scroll position updates.
+  </Card>
+  
+  <Card title="NORMAL" icon="list">
+    **Priority: 3**  
+    Standard updates: data fetching completion, generic state changes, navigation.
+  </Card>
+  
+  <Card title="LOW" icon="chart-line">
+    **Priority: 4**  
+    Non-critical updates: analytics events, prefetching, background data sync.
+  </Card>
+  
+  <Card title="IDLE" icon="clock">
+    **Priority: 5**  
+    Lowest priority work: off-screen rendering, precomputation, cache warming.
+  </Card>
+</CardGroup>
+
+## Priority Scheduling
+
+### scheduleUpdate()
+
+Pushes a state update and its urgency into the `pendingUpdates` queue. Uses `requestIdleCallback` to flush updates when the main thread isn't busy.
+
+**Source Reference:** `/packages/core/src/lib/priority.js:21`
+
+```javascript
+const scheduleUpdate = (callback, priority = Priority.NORMAL) => {
+  pendingUpdates.push({ callback, priority, timestamp: Date.now() });
+
+  if (!isScheduling) {
+    isScheduling = true;
+    rIC(processPendingUpdates);
+  }
+};
+```
+
+<Note>
+  Updates are **not** executed immediately. They're queued and processed in priority order during the next idle callback.
+</Note>
+
+### processPendingUpdates()
+
+Sorts the update queue based on priority and executes the highest priority task.
+
+**Source Reference:** `/packages/core/src/lib/priority.js:33`
+
+```javascript
+const processPendingUpdates = (deadline) => {
+  // Sort by priority (lower number = higher priority)
+  pendingUpdates.sort((a, b) => a.priority - b.priority);
+
+  while (pendingUpdates.length > 0 && deadline.timeRemaining() > 1) {
+    const update = pendingUpdates.shift();
+    currentPriority = update.priority;
+    update.callback();
+  }
+
+  if (pendingUpdates.length > 0) {
+    rIC(processPendingUpdates);
+  } else {
+    isScheduling = false;
+    currentPriority = Priority.NORMAL;
+  }
+};
+```
+
+<Steps>
+  <Step title="Sort Queue">
+    Updates are sorted by priority: `IMMEDIATE` (1) executes before `LOW` (4).
+  </Step>
+  
+  <Step title="Process Updates">
+    Execute updates while time remains in the idle frame (`deadline.timeRemaining() > 1`).
+  </Step>
+  
+  <Step title="Yield to Browser">
+    If time runs out, schedule another idle callback to continue processing.
+  </Step>
+  
+  <Step title="Reset State">
+    When queue is empty, reset scheduling state and return priority to `NORMAL`.
+  </Step>
+</Steps>
+
+### runWithPriority()
+
+Temporarily elevates the context priority while executing a callback, then restores the previous priority.
+
+**Source Reference:** `/packages/core/src/lib/priority.js:53`
+
+```javascript
+const runWithPriority = (priority, callback) => {
+  const previousPriority = currentPriority;
+  currentPriority = priority;
+
+  try {
+    return callback();
+  } finally {
+    currentPriority = previousPriority;
+  }
+};
+```
+
+**Use case:**
+
+```javascript
+import { runWithPriority, Priority } from '@unsetsoft/ryunixjs';
+
+// Force low priority for background work
+runWithPriority(Priority.LOW, () => {
+  computeExpensiveAnalytics();
+});
+```
+
+## Hook Implementations
+
+### useStorePriority()
+
+A low-level dispatcher that wraps `useReducer` and delegates dispatch queueing to `scheduleUpdate`.
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:653`
+
+```javascript
+const useStorePriority = (initialState) => {
+  const reducer = (state, action) =>
+    typeof action === 'function' ? action.value(state) : action.value;
+
+  const [state, baseDispatch] = useReducer(reducer, initialState);
+
+  const dispatch = (action, priority = Priority.NORMAL) => {
+    const wrappedAction = {
+      value: action,
+      priority,
+    };
+
+    scheduleUpdate(() => baseDispatch(wrappedAction), priority);
+  };
+
+  return [state, dispatch];
+};
+```
+
+**Usage:**
+
+```jsx
+import { useStorePriority, Priority } from '@unsetsoft/ryunixjs';
+
+const Analytics = () => {
+  const [events, logEvent] = useStorePriority([]);
+
+  const trackClick = (eventName) => {
+    // Low priority - doesn't block UI
+    logEvent(
+      (prev) => [...prev, { name: eventName, time: Date.now() }],
+      Priority.LOW
+    );
+  };
+
+  return <button onClick={() => trackClick('button_click')}>Click Me</button>;
+};
+```
+
+### useTransition()
+
+Leverages `useStorePriority` to mark updates as non-urgent. Dispatches the pending state as `IMMEDIATE`, but schedules the actual work as `LOW` priority.
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:674`
+
+```javascript
+const useTransition = () => {
+  const [isPending, setIsPending] = useStorePriority(false);
+
+  const startTransition = (callback) => {
+    setIsPending(true, Priority.IMMEDIATE);
+
+    setTimeout(() => {
+      runWithPriority(Priority.LOW, () => {
+        callback();
+        setIsPending(false, Priority.LOW);
+      });
+    }, 0);
+  };
+
+  return [isPending, startTransition];
+};
+```
+
+<CodeGroup>
+```jsx Search with Transition
+import { useTransition, useStore } from '@unsetsoft/ryunixjs';
+
+const SearchPage = () => {
+  const [query, setQuery] = useStore('');
+  const [results, setResults] = useStore([]);
+  const [isPending, startTransition] = useTransition();
+
+  const handleSearch = (value) => {
+    setQuery(value);  // Immediate: update input
+
+    startTransition(() => {
+      // Low priority: expensive filtering
+      const filtered = bigDataset.filter(item =>
+        item.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setResults(filtered);
+    });
+  };
+
+  return (
+    <div>
+      <input 
+        value={query} 
+        onChange={e => handleSearch(e.target.value)} 
+      />
+      {isPending && <Spinner />}
+      <ResultsList results={results} />
+    </div>
+  );
+};
+```
+
+```jsx Tab Switching
+const TabContainer = () => {
+  const [activeTab, setActiveTab] = useStore('overview');
+  const [isPending, startTransition] = useTransition();
+
+  const switchTab = (tabName) => {
+    startTransition(() => {
+      setActiveTab(tabName);
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={() => switchTab('overview')}>Overview</button>
+      <button onClick={() => switchTab('details')}>Details</button>
+      {isPending && <div>Loading tab...</div>}
+      <TabContent tab={activeTab} />
+    </div>
+  );
+};
+```
+</CodeGroup>
+
+<Tip>
+  Use `useTransition` for updates that are expensive but not urgent. The UI stays responsive to user input while heavy work happens in the background.
+</Tip>
+
+### useDeferredValue()
+
+Leverages a 100ms debouncing `setTimeout` alongside `Priority.LOW` to delay re-rendering expensive calculated text/data.
+
+**Source Reference:** `/packages/core/src/lib/hooks.js:694`
+
+```javascript
+const useDeferredValue = (value) => {
+  const [deferredValue, setDeferredValue] = useStorePriority(value);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDeferredValue(value, Priority.LOW);
+    }, 100);
+
+    return () => clearTimeout(timeout);
+  }, [value]);
+
+  return deferredValue;
+};
+```
+
+**Usage:**
+
+```jsx
+import { useDeferredValue, useStore } from '@unsetsoft/ryunixjs';
+
+const SlowList = ({ items }) => {
+  // Renders very slowly due to complexity
+  return items.map(item => <ExpensiveItem key={item.id} item={item} />);
+};
+
+const SearchPage = () => {
+  const [query, setQuery] = useStore('');
+  const deferredQuery = useDeferredValue(query);
+
+  const filteredItems = items.filter(item =>
+    item.name.includes(deferredQuery)
+  );
+
+  return (
+    <div>
+      <input value={query} onChange={e => setQuery(e.target.value)} />
+      <SlowList items={filteredItems} />
+    </div>
+  );
+};
+```
+
+<Note>
+  The input stays responsive because the expensive `SlowList` re-render is deferred by 100ms and runs at low priority.
+</Note>
+
+## Update Batching
+
+Ryunix batches multiple synchronous state updates into a single render cycle to improve performance.
+
+### batchUpdates()
+
+**Source Reference:** `/packages/core/src/lib/batching.js:11`
+
+```javascript
+const batchUpdates = (callback) => {
+  const wasBatching = isBatching;
+  isBatching = true;
+
+  try {
+    callback();
+  } finally {
+    isBatching = wasBatching;
+
+    if (!isBatching && pendingUpdates.length > 0) {
+      flushUpdates();
+    }
+  }
+};
+```
+
+**How it works:**
+
+<Steps>
+  <Step title="Set Batching Flag">
+    `isBatching = true` prevents immediate flushing of updates.
+  </Step>
+  
+  <Step title="Queue Updates">
+    All `setState` calls inside the callback are queued in `pendingUpdates` array.
+  </Step>
+  
+  <Step title="Flush Once">
+    After the callback completes, `flushUpdates()` processes all queued updates, triggering a single `scheduleWork()`.
+  </Step>
+</Steps>
+
+**Example:**
+
+```jsx
+import { batchUpdates } from '@unsetsoft/ryunixjs';
+
+const MultiUpdate = () => {
+  const [count, setCount] = useStore(0);
+  const [name, setName] = useStore('Alice');
+  const [age, setAge] = useStore(25);
+
+  const updateAll = () => {
+    batchUpdates(() => {
+      setCount(count + 1);
+      setName('Bob');
+      setAge(30);
+    });
+    // Only ONE render cycle for all three updates
+  };
+
+  return <button onClick={updateAll}>Update All</button>;
+};
+```
+
+<Warning>
+  Event handlers automatically batch updates. You only need `batchUpdates()` for updates in async callbacks (setTimeout, fetch, etc.).
+</Warning>
+
+### queueUpdate()
+
+Adds an update to the queue and flushes if not currently batching.
+
+**Source Reference:** `/packages/core/src/lib/batching.js:32`
+
+```javascript
+const queueUpdate = (update) => {
+  pendingUpdates.push(update);
+
+  if (!isBatching) {
+    flushUpdates();
+  }
+};
+```
+
+### flushUpdates()
+
+Processes and executes pending updates stored in the array.
+
+**Source Reference:** `/packages/core/src/lib/batching.js:45`
+
+```javascript
+const flushUpdates = () => {
+  if (pendingUpdates.length === 0) return;
+
+  const updates = pendingUpdates;
+  pendingUpdates = [];
+
+  // Execute all updates
+  updates.forEach((update) => update());
+};
+```
+
+## Priority in Practice
+
+### Example: Live Search
+
+```jsx
+import { useStore, useTransition, Priority } from '@unsetsoft/ryunixjs';
+
+const LiveSearch = () => {
+  const [input, setInput] = useStore('');
+  const [results, setResults] = useStore([]);
+  const [isPending, startTransition] = useTransition();
+
+  const handleInput = (value) => {
+    // IMMEDIATE: Update input field instantly
+    setInput(value);
+
+    // LOW: Defer expensive search
+    startTransition(() => {
+      const filtered = largeDataset.filter(item =>
+        item.title.toLowerCase().includes(value.toLowerCase())
+      );
+      setResults(filtered);
+    });
+  };
+
+  return (
+    <div>
+      <input 
+        value={input} 
+        onChange={e => handleInput(e.target.value)}
+        placeholder="Search..."
+      />
+      {isPending ? (
+        <div>Searching...</div>
+      ) : (
+        <ul>
+          {results.map(item => <li key={item.id}>{item.title}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+};
+```
+
+### Example: Analytics Tracking
+
+```jsx
+import { useStorePriority, Priority } from '@unsetsoft/ryunixjs';
+
+const Analytics = () => {
+  const [events, logEvent] = useStorePriority([]);
+
+  const trackPageView = () => {
+    logEvent(
+      prev => [...prev, { type: 'pageview', path: window.location.pathname }],
+      Priority.LOW  // Don't block UI for analytics
+    );
+  };
+
+  const trackClick = (button) => {
+    logEvent(
+      prev => [...prev, { type: 'click', button, time: Date.now() }],
+      Priority.IDLE  // Lowest priority
+    );
+  };
+
+  return (
+    <div>
+      <button onClick={() => trackClick('cta')}>Call to Action</button>
+      {/* Analytics never blocks user interactions */}
+    </div>
+  );
+};
+```
+
+## Performance Benefits
+
+<CardGroup cols={2}>
+  <Card title="Responsive Input" icon="keyboard">
+    User input (typing, clicking) always runs at `IMMEDIATE` priority, ensuring the UI feels instant even during heavy background work.
+  </Card>
+  
+  <Card title="Smooth Animations" icon="video">
+    Animations and transitions can be prioritized as `USER_BLOCKING`, preventing jank from lower-priority updates.
+  </Card>
+  
+  <Card title="Non-Blocking Analytics" icon="chart-simple">
+    Tracking events run at `LOW` or `IDLE` priority, never interfering with the user experience.
+  </Card>
+  
+  <Card title="Efficient Batching" icon="layer-group">
+    Multiple updates in the same event handler are automatically batched into a single render, reducing wasted work.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Accordion title="When to use useTransition">
+  Use `useTransition` when you have expensive state updates that don't need to block the UI:
+  
+  - Filtering large lists
+  - Complex calculations
+  - Heavy re-renders
+  - Tab switching with lazy loading
+  
+  **Don't use** for simple state updates or critical UI feedback.
+</Accordion>
+
+<Accordion title="When to use useDeferredValue">
+  Use `useDeferredValue` when you want to debounce a value and defer its effect:
+  
+  - Search input → expensive list render
+  - Slider → complex visualization
+  - Fast typing → slow rendering component
+  
+  **Don't use** when you need immediate visual feedback.
+</Accordion>
+
+<Accordion title="When to use batchUpdates">
+  Use `batchUpdates` when updating multiple state values outside of event handlers:
+  
+  - Inside `setTimeout` / `setInterval`
+  - After async operations (fetch, promises)
+  - In animation frame callbacks
+  
+  **Don't use** inside event handlers (they auto-batch).
+</Accordion>
+
+<Accordion title="Choosing the right priority">
+  | Update Type | Priority |
+  |-------------|----------|
+  | User clicks, keyboard input | `IMMEDIATE` |
+  | Hover states, scroll updates | `USER_BLOCKING` |
+  | Data fetching, navigation | `NORMAL` |
+  | Analytics, prefetching | `LOW` |
+  | Background precomputation | `IDLE` |
+</Accordion>

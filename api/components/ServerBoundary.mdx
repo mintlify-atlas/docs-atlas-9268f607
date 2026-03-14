@@ -1,0 +1,368 @@
+---
+title: 'ServerBoundary'
+description: 'Mark content for server-only rendering with hydration skipping'
+icon: 'server'
+---
+
+## Overview
+
+`ServerBoundary` is a special component that wraps content rendered exclusively on the server. During client-side hydration, RyunixJS will skip this boundary's children, preserving the server-rendered HTML without attempting to reconcile it.
+
+## Import
+
+```javascript
+import { ServerBoundary } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+function ServerBoundary({ children, id }) {
+  // On the client, this component just renders a container.
+  // The children are already in the DOM from the server.
+  return createElement('div', 
+    { 'data-ryunix-server': id, style: { display: 'contents' } }, 
+    children
+  )
+}
+```
+
+## Props
+
+<ParamField path="children" type="ReactNode" required>
+  The content to render on the server. This content will be preserved during hydration and not reconciled on the client.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional identifier for the server boundary. Useful for debugging and tracking multiple server boundaries.
+</ParamField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { ServerBoundary } from 'ryunix'
+
+const Page = ({ content }) => {
+  return (
+    <div>
+      <h1>My Page</h1>
+      <ServerBoundary>
+        <article dangerouslySetInnerHTML={{ __html: content }} />
+      </ServerBoundary>
+    </div>
+  )
+}
+```
+
+```jsx Static Content
+import { ServerBoundary } from 'ryunix'
+
+const BlogPost = ({ post }) => {
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <ServerBoundary id="post-content">
+        <div className="prose">
+          {post.content}
+        </div>
+      </ServerBoundary>
+    </article>
+  )
+}
+```
+
+```jsx Large Static Sections
+import { ServerBoundary } from 'ryunix'
+
+const Documentation = ({ sections }) => {
+  return (
+    <div>
+      <nav>Table of Contents</nav>
+      
+      {sections.map(section => (
+        <ServerBoundary key={section.id} id={`section-${section.id}`}>
+          <section>
+            <h2>{section.title}</h2>
+            <div>{section.content}</div>
+          </section>
+        </ServerBoundary>
+      ))}
+    </div>
+  )
+}
+```
+
+```jsx Heavy HTML Content
+import { ServerBoundary } from 'ryunix'
+
+const EmailPreview = ({ html }) => {
+  return (
+    <div className="email-preview">
+      <div className="toolbar">
+        <button>Send</button>
+        <button>Save Draft</button>
+      </div>
+      
+      <ServerBoundary id="email-body">
+        <iframe srcDoc={html} />
+      </ServerBoundary>
+    </div>
+  )
+}
+```
+
+```jsx Mixed Server/Client Content
+import { ServerBoundary } from 'ryunix'
+import { InteractiveWidget } from './InteractiveWidget'
+
+const Dashboard = ({ staticReport, userData }) => {
+  return (
+    <div className="dashboard">
+      <ServerBoundary id="report">
+        <div className="report">
+          <h2>Monthly Report</h2>
+          <pre>{staticReport}</pre>
+        </div>
+      </ServerBoundary>
+      
+      <InteractiveWidget data={userData} />
+    </div>
+  )
+}
+```
+
+</CodeGroup>
+
+## Behavior
+
+### Server Rendering
+
+On the server, `ServerBoundary` renders normally:
+
+```html
+<div data-ryunix-server="post-content" style="display: contents">
+  <article>
+    <!-- Server-rendered content -->
+  </article>
+</div>
+```
+
+### Client Hydration
+
+During hydration, RyunixJS detects the `data-ryunix-server` attribute and:
+
+1. Skips reconciliation of the boundary's children
+2. Preserves the server-rendered HTML as-is
+3. Avoids unnecessary client-side processing
+
+### Wrapper Element
+
+The boundary uses `display: contents` to remain transparent in the layout:
+
+```jsx
+<div data-ryunix-server={id} style={{ display: 'contents' }}>
+  {children}
+</div>
+```
+
+### Internal Type
+
+The component is marked with a special type identifier:
+
+```javascript
+ServerBoundary.ryunix_type = 'RYUNIX_SERVER_BOUNDARY'
+```
+
+## Use Cases
+
+### 1. Static HTML Content
+
+Perfect for content that doesn't need client-side interactivity:
+
+```jsx
+const Article = ({ html }) => {
+  return (
+    <ServerBoundary>
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </ServerBoundary>
+  )
+}
+```
+
+### 2. Large Markdown Content
+
+Avoid re-rendering large markdown output on the client:
+
+```jsx
+import { renderMarkdown } from './markdown'
+
+const MarkdownPage = ({ markdown }) => {
+  const html = renderMarkdown(markdown)
+  
+  return (
+    <ServerBoundary id="markdown-content">
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </ServerBoundary>
+  )
+}
+```
+
+### 3. Heavy Visualizations
+
+Preserve server-rendered charts or diagrams:
+
+```jsx
+const ChartPage = ({ chartSvg }) => {
+  return (
+    <div>
+      <h1>Analytics</h1>
+      <ServerBoundary id="chart">
+        <div dangerouslySetInnerHTML={{ __html: chartSvg }} />
+      </ServerBoundary>
+    </div>
+  )
+}
+```
+
+### 4. Third-Party Content
+
+Wrap external content that shouldn't be touched during hydration:
+
+```jsx
+const EmbeddedContent = ({ embedHtml }) => {
+  return (
+    <ServerBoundary id="embed">
+      <div dangerouslySetInnerHTML={{ __html: embedHtml }} />
+    </ServerBoundary>
+  )
+}
+```
+
+## Performance Benefits
+
+<Tip>
+  Use ServerBoundary to skip hydration of large static content, reducing:
+  - Initial JavaScript bundle size
+  - Hydration time
+  - Memory usage on the client
+  - Time to Interactive (TTI)
+</Tip>
+
+### Before (without ServerBoundary)
+
+```jsx
+// Client must reconcile all content
+const Page = ({ article }) => {
+  return <article>{article.content}</article> // Full reconciliation
+}
+```
+
+### After (with ServerBoundary)
+
+```jsx
+// Client skips reconciliation
+const Page = ({ article }) => {
+  return (
+    <ServerBoundary>
+      <article>{article.content}</article> // Skipped during hydration
+    </ServerBoundary>
+  )
+}
+```
+
+## Important Considerations
+
+<Warning>
+  Content inside ServerBoundary will NOT be interactive on the client. Don't wrap components that need event handlers or state management.
+</Warning>
+
+<Warning>
+  The children of ServerBoundary are never re-rendered on the client. Any updates to props will not cause re-rendering of the boundary's content.
+</Warning>
+
+<Note>
+  ServerBoundary is most beneficial for large static content. For small elements, the overhead of the boundary may outweigh the benefits.
+</Note>
+
+## Best Practices
+
+### ✅ Good Use Cases
+
+```jsx
+// Static articles
+<ServerBoundary>
+  <Article content={staticContent} />
+</ServerBoundary>
+
+// Server-rendered markdown
+<ServerBoundary>
+  <MarkdownRenderer markdown={md} />
+</ServerBoundary>
+
+// Large tables
+<ServerBoundary>
+  <table>{largeDataSet.map(...)}</table>
+</ServerBoundary>
+```
+
+### ❌ Bad Use Cases
+
+```jsx
+// Interactive forms - needs event handlers
+<ServerBoundary>
+  <form onSubmit={handleSubmit}>...</form> {/* Won't work! */}
+</ServerBoundary>
+
+// Dynamic content - needs re-rendering
+<ServerBoundary>
+  <div>{counter}</div> {/* Won't update! */}
+</ServerBoundary>
+
+// Components with state
+<ServerBoundary>
+  <InteractiveWidget /> {/* Won't work! */}
+</ServerBoundary>
+```
+
+## Debugging
+
+Identify server boundaries in the DOM:
+
+```javascript
+// Find all server boundaries
+const boundaries = document.querySelectorAll('[data-ryunix-server]')
+console.log('Server boundaries:', boundaries)
+
+// Check specific boundary
+const boundary = document.querySelector('[data-ryunix-server="post-content"]')
+if (boundary) {
+  console.log('Boundary found:', boundary.id)
+}
+```
+
+## SSR Integration
+
+ServerBoundary works seamlessly with RyunixJS SSR:
+
+```jsx
+// server.js
+import { renderToString } from 'ryunix/server'
+
+const html = renderToString(
+  <App>
+    <ServerBoundary id="static-content">
+      <HeavyStaticContent />
+    </ServerBoundary>
+  </App>
+)
+
+// Client hydration automatically skips the boundary
+```
+
+## Related
+
+- [Server Components](/advanced/server-components)
+- [SSR Guide](/webpack/routing-ssr-ssg)
+- See the SSR Integration section above for hydration details

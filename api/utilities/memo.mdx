@@ -1,0 +1,509 @@
+---
+title: 'memo'
+description: 'Memoize components to prevent unnecessary re-renders'
+icon: 'memory'
+---
+
+## Overview
+
+`memo` is a higher-order component that memoizes a component, preventing re-renders when props haven't changed. It uses shallow comparison by default but supports custom comparison functions for optimized performance.
+
+## Import
+
+```javascript
+import { memo, shallowEqual, deepEqual } from 'ryunix'
+```
+
+## Syntax
+
+```javascript
+const memo = (Component, arePropsEqual = shallowEqual) => {
+  let prevProps = null
+  let prevResult = null
+
+  const MemoizedComponent = (props) => {
+    if (prevProps && arePropsEqual(prevProps, props)) {
+      return prevResult
+    }
+    prevProps = props
+    prevResult = Component(props)
+    return prevResult
+  }
+
+  MemoizedComponent.displayName = `Memo(${Component.displayName || Component.name || 'Component'})`
+  return MemoizedComponent
+}
+```
+
+## Parameters
+
+<ParamField path="Component" type="Function" required>
+  The component to memoize. Must be a function component.
+</ParamField>
+
+<ParamField path="arePropsEqual" type="Function" default="shallowEqual">
+  Optional comparison function to determine if props are equal. Receives `(prevProps, nextProps)` and should return `true` if props are equal.
+</ParamField>
+
+## Returns
+
+<ResponseField name="MemoizedComponent" type="Function">
+  A memoized version of the component that only re-renders when props change according to the comparison function.
+</ResponseField>
+
+## Usage
+
+<CodeGroup>
+
+```jsx Basic Usage
+import { memo } from 'ryunix'
+
+const ExpensiveComponent = ({ data }) => {
+  console.log('Rendering ExpensiveComponent')
+  return (
+    <div>
+      <h1>{data.title}</h1>
+      <p>{data.description}</p>
+    </div>
+  )
+}
+
+const MemoizedComponent = memo(ExpensiveComponent)
+
+const App = () => {
+  return <MemoizedComponent data={{ title: 'Hello', description: 'World' }} />
+}
+```
+
+```jsx With Custom Comparison
+import { memo } from 'ryunix'
+
+const UserCard = ({ user }) => {
+  return (
+    <div className="user-card">
+      <h3>{user.name}</h3>
+      <p>{user.email}</p>
+    </div>
+  )
+}
+
+// Only re-render if user.id changes
+const MemoizedUserCard = memo(UserCard, (prevProps, nextProps) => {
+  return prevProps.user.id === nextProps.user.id
+})
+```
+
+```jsx List Optimization
+import { memo } from 'ryunix'
+
+const ListItem = ({ item, onSelect }) => {
+  console.log('Rendering item:', item.id)
+  return (
+    <div onClick={() => onSelect(item.id)}>
+      {item.name}
+    </div>
+  )
+}
+
+const MemoizedListItem = memo(ListItem)
+
+const List = ({ items, onSelect }) => {
+  return (
+    <div>
+      {items.map(item => (
+        <MemoizedListItem 
+          key={item.id} 
+          item={item} 
+          onSelect={onSelect} 
+        />
+      ))}
+    </div>
+  )
+}
+```
+
+```jsx Complex Props
+import { memo, deepEqual } from 'ryunix'
+
+const DataTable = ({ data, config }) => {
+  return (
+    <table>
+      <thead>
+        {config.columns.map(col => (
+          <th key={col.key}>{col.label}</th>
+        ))}
+      </thead>
+      <tbody>
+        {data.map(row => (
+          <tr key={row.id}>
+            {config.columns.map(col => (
+              <td key={col.key}>{row[col.key]}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// Use deep comparison for nested objects
+const MemoizedDataTable = memo(DataTable, deepEqual)
+```
+
+```jsx Named Components
+import { memo } from 'ryunix'
+
+const Counter = ({ count }) => {
+  return <div>Count: {count}</div>
+}
+
+Counter.displayName = 'Counter'
+
+const MemoizedCounter = memo(Counter)
+// MemoizedCounter.displayName === 'Memo(Counter)'
+```
+
+</CodeGroup>
+
+## Comparison Functions
+
+### shallowEqual
+
+Default comparison function that performs shallow comparison of props:
+
+```javascript
+const shallowEqual = (prevProps, nextProps) => {
+  const prevKeys = Object.keys(prevProps)
+  const nextKeys = Object.keys(nextProps)
+
+  if (prevKeys.length !== nextKeys.length) return false
+
+  return prevKeys.every((key) => Object.is(prevProps[key], nextProps[key]))
+}
+```
+
+**Usage:**
+
+```javascript
+import { memo, shallowEqual } from 'ryunix'
+
+const Component = memo(MyComponent, shallowEqual)
+```
+
+### deepEqual
+
+Deep comparison function for complex nested objects:
+
+```javascript
+const deepEqual = (a, b) => {
+  if (a === b) return true
+  if (a == null || b == null) return false
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+
+  if (keysA.length !== keysB.length) return false
+
+  return keysA.every((key) => deepEqual(a[key], b[key]))
+}
+```
+
+**Usage:**
+
+```javascript
+import { memo, deepEqual } from 'ryunix'
+
+const Component = memo(MyComponent, deepEqual)
+```
+
+<Warning>
+  Deep comparison can be expensive for large objects. Use it only when necessary.
+</Warning>
+
+### Custom Comparison
+
+Create custom comparison logic for specific use cases:
+
+```javascript
+import { memo } from 'ryunix'
+
+const ProductCard = ({ product, currency }) => {
+  return (
+    <div>
+      <h3>{product.name}</h3>
+      <p>{product.price} {currency}</p>
+    </div>
+  )
+}
+
+// Only update if product ID or currency changes
+const arePropsEqual = (prevProps, nextProps) => {
+  return (
+    prevProps.product.id === nextProps.product.id &&
+    prevProps.currency === nextProps.currency
+  )
+}
+
+const MemoizedProductCard = memo(ProductCard, arePropsEqual)
+```
+
+## Performance Optimization
+
+### When to Use memo
+
+<Tip>
+  Use `memo` when:
+  - Component renders often with the same props
+  - Component is expensive to render
+  - Component is in a frequently re-rendering parent
+  - Props are primitive values or stable references
+</Tip>
+
+### When NOT to Use memo
+
+<Warning>
+  Avoid `memo` when:
+  - Component always receives different props
+  - Component is cheap to render
+  - Props change on every render (e.g., new objects/functions)
+  - Premature optimization without measuring
+</Warning>
+
+### Measuring Impact
+
+```jsx
+import { memo, useEffect } from 'ryunix'
+
+let renderCount = 0
+
+const ExpensiveComponent = ({ data }) => {
+  renderCount++
+  
+  useEffect(() => {
+    console.log('Total renders:', renderCount)
+  })
+  
+  // Expensive computation
+  const processedData = expensiveCalculation(data)
+  
+  return <div>{processedData}</div>
+}
+
+const MemoizedComponent = memo(ExpensiveComponent)
+
+// Compare render counts with and without memo
+```
+
+## Advanced Patterns
+
+### Memoizing with Callbacks
+
+```jsx
+import { memo, useCallback } from 'ryunix'
+
+const Button = ({ onClick, label }) => {
+  console.log('Rendering button:', label)
+  return <button onClick={onClick}>{label}</button>
+}
+
+const MemoizedButton = memo(Button)
+
+const Parent = () => {
+  // Without useCallback, onClick changes on every render
+  // even with memo, Button will re-render
+  const handleClick = useCallback(() => {
+    console.log('Clicked')
+  }, [])
+  
+  return <MemoizedButton onClick={handleClick} label="Click me" />
+}
+```
+
+### Selective Memoization
+
+```jsx
+import { memo } from 'ryunix'
+
+const Dashboard = ({ user, stats, notifications }) => {
+  return (
+    <div>
+      <UserProfile user={user} /> {/* Changes rarely */}
+      <Stats data={stats} /> {/* Changes frequently */}
+      <Notifications items={notifications} /> {/* Changes frequently */}
+    </div>
+  )
+}
+
+// Only memoize UserProfile
+const UserProfile = memo(({ user }) => {
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      <p>{user.email}</p>
+    </div>
+  )
+})
+```
+
+### Comparison by ID
+
+```jsx
+import { memo } from 'ryunix'
+
+const Article = ({ article }) => {
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      <div>{article.content}</div>
+    </article>
+  )
+}
+
+// Prevent re-render if article ID hasn't changed
+const MemoizedArticle = memo(Article, (prev, next) => {
+  return prev.article.id === next.article.id
+})
+```
+
+### Combining with Other Optimizations
+
+```jsx
+import { memo, useMemo, useCallback } from 'ryunix'
+
+const DataGrid = ({ data, onRowClick }) => {
+  // Memoize expensive calculations
+  const sortedData = useMemo(() => {
+    return data.sort((a, b) => a.name.localeCompare(b.name))
+  }, [data])
+  
+  return (
+    <div>
+      {sortedData.map(row => (
+        <Row key={row.id} data={row} onClick={onRowClick} />
+      ))}
+    </div>
+  )
+}
+
+const Row = memo(({ data, onClick }) => {
+  const handleClick = useCallback(() => {
+    onClick(data.id)
+  }, [data.id, onClick])
+  
+  return (
+    <div onClick={handleClick}>
+      {data.name}
+    </div>
+  )
+})
+
+const MemoizedDataGrid = memo(DataGrid)
+```
+
+## Display Name
+
+Memoized components automatically get a display name for debugging:
+
+```javascript
+const MyComponent = ({ name }) => <div>{name}</div>
+MyComponent.displayName = 'MyComponent'
+
+const Memoized = memo(MyComponent)
+console.log(Memoized.displayName) // 'Memo(MyComponent)'
+```
+
+In development tools:
+```
+<Memo(MyComponent)>
+  <div>Content</div>
+</Memo(MyComponent)>
+```
+
+## Common Pitfalls
+
+### New Objects in Props
+
+```jsx
+// ❌ Bad - Creates new object on every render
+const Parent = () => {
+  return <MemoizedChild config={{ theme: 'dark' }} />
+}
+
+// ✅ Good - Stable reference
+const config = { theme: 'dark' }
+const Parent = () => {
+  return <MemoizedChild config={config} />
+}
+
+// ✅ Better - Use useMemo for dynamic config
+import { useMemo } from 'ryunix'
+
+const Parent = ({ theme }) => {
+  const config = useMemo(() => ({ theme }), [theme])
+  return <MemoizedChild config={config} />
+}
+```
+
+### Inline Functions
+
+```jsx
+// ❌ Bad - New function on every render
+const Parent = () => {
+  return <MemoizedChild onClick={() => console.log('click')} />
+}
+
+// ✅ Good - Stable callback
+import { useCallback } from 'ryunix'
+
+const Parent = () => {
+  const handleClick = useCallback(() => {
+    console.log('click')
+  }, [])
+  
+  return <MemoizedChild onClick={handleClick} />
+}
+```
+
+## TypeScript Support
+
+```typescript
+import { memo } from 'ryunix'
+
+interface Props {
+  name: string
+  age: number
+}
+
+const Component = ({ name, age }: Props) => {
+  return <div>{name}, {age}</div>
+}
+
+const MemoizedComponent = memo<Props>(Component)
+
+// With custom comparison
+const MemoizedWithComparison = memo<Props>(
+  Component,
+  (prevProps, nextProps) => prevProps.name === nextProps.name
+)
+```
+
+## Best Practices
+
+<Tip>
+  Profile before memoizing. Use browser DevTools to identify components that render frequently and are expensive.
+</Tip>
+
+<Tip>
+  Combine `memo` with `useCallback` and `useMemo` for maximum effectiveness.
+</Tip>
+
+<Note>
+  `memo` uses referential equality (`Object.is`) for shallow comparison, which is the same as `===` for primitives.
+</Note>
+
+## Related
+
+- [useMemo](/api/hooks/useMemo)
+- [useCallback](/api/hooks/useCallback)
+- See the examples above for performance optimization patterns

@@ -1,0 +1,426 @@
+---
+title: "Rendering Architecture"
+description: "Modern, concurrent rendering model with SSR and Island Architecture support"
+icon: "play"
+---
+
+The `@unsetsoft/ryunixjs` core rendering engine provides a modern, concurrent rendering model with robust support for Server-Side Rendering (SSR) and Island Architecture.
+
+## Client-Side Rendering (CSR)
+
+### render()
+
+The entry point for rendering a Ryunix virtual DOM tree into a physical DOM container.
+
+```jsx
+import { render, createElement } from '@unsetsoft/ryunixjs';
+
+const App = () => <div>Hello, Ryunix!</div>;
+
+render(
+  createElement(App),
+  document.getElementById('root')
+);
+```
+
+**Source Reference:** `/packages/core/src/lib/render.js:17`
+
+<Steps>
+  <Step title="Clear Container">
+    Clears the container before rendering to prevent duplication.
+  </Step>
+  
+  <Step title="Create Root Fiber">
+    Sets up a `wipRoot` (Work-In-Progress Root) with the element as children.
+  </Step>
+  
+  <Step title="Schedule Work">
+    Calls `scheduleWork()` to begin the asynchronous rendering process.
+  </Step>
+</Steps>
+
+#### Implementation Details
+
+```javascript
+const render = (element, container) => {
+  const state = getState();
+  clearContainer(container);
+
+  const root = {
+    dom: container,
+    props: {
+      children: [element],
+    },
+    alternate: state.currentRoot,
+    isHydrating: false,
+    hydrateCursor: null,
+  };
+
+  scheduleWork(root);
+  return root;
+};
+```
+
+### hydrate()
+
+Used to attach Ryunix event listeners and state to an existing server-rendered HTML tree. Instead of clearing the tree like `render()`, it walks the existing DOM nodes.
+
+```jsx
+import { hydrate, createElement } from '@unsetsoft/ryunixjs';
+
+const App = () => <div>Hello, Ryunix!</div>;
+
+hydrate(
+  createElement(App),
+  document.getElementById('root')
+);
+```
+
+**Source Reference:** `/packages/core/src/lib/render.js:50`
+
+<Note>
+  Hydration preserves the SSR HTML, providing a much faster initial load and seamless transition to interactive state.
+</Note>
+
+#### How Hydration Works
+
+<Steps>
+  <Step title="Preserve DOM">
+    Instead of clearing the container, it sets `isHydrating: true` and stores a `hydrateCursor` pointing to the first child node.
+  </Step>
+  
+  <Step title="Match Nodes">
+    During reconciliation, fibers are matched with existing DOM nodes. If a match is found, the fiber's `dom` property is set to the existing node and marked with `EFFECT_TAG.HYDRATE`.
+  </Step>
+  
+  <Step title="Attach Interactivity">
+    During commit, hydrated nodes receive event listeners and prop updates without being re-created or moved.
+  </Step>
+  
+  <Step title="Cleanup Mismatches">
+    If hydration fails (DOM mismatch), Ryunix falls back to client-side rendering and clears the container.
+  </Step>
+</Steps>
+
+<Warning>
+  If the server-rendered HTML doesn't match the client-side virtual DOM, hydration will fail and fall back to CSR. This can cause a "flash" as the DOM is cleared and re-rendered.
+</Warning>
+
+### init()
+
+The smart initialization function. It automatically detects whether the target root container has child nodes and chooses the appropriate rendering method.
+
+```jsx
+import { init, createElement } from '@unsetsoft/ryunixjs';
+
+const App = () => <div>Hello, Ryunix!</div>;
+
+init(createElement(App), '__ryunix');
+```
+
+**Source Reference:** `/packages/core/src/lib/render.js:109`
+
+#### Decision Logic
+
+```javascript
+if (process.env.RYUNIX_SSR && containerRoot.hasChildNodes()) {
+  // Server-rendered content detected → hydrate
+  hydrate(MainElement, containerRoot);
+  hydrateIslands(components, true);
+} else {
+  // No SSR content → standard render
+  render(MainElement, containerRoot);
+  hydrateIslands(components);
+}
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `MainElement` | `ReactNode` | - | Root component to render |
+| `root` | `string` | `'__ryunix'` | ID of the container element |
+| `components` | `object` | `{}` | Island components registry |
+
+<Tip>
+  Use `init()` in production to automatically handle both CSR and SSR scenarios without code changes.
+</Tip>
+
+## Island Architecture
+
+Ryunix supports Partial Hydration via "Islands". This means that mostly-static pages can ship minimal JavaScript by only hydrating specific dynamic components.
+
+### hydrateIslands()
+
+Scans the DOM for elements with the `data-ryunix-island` attribute and hydrates them individually.
+
+```jsx
+import { hydrateIslands } from '@unsetsoft/ryunixjs';
+import Counter from './Counter';
+import Newsletter from './Newsletter';
+
+const islands = {
+  Counter,
+  Newsletter,
+};
+
+hydrateIslands(islands);
+```
+
+**Source Reference:** `/packages/core/src/lib/render.js:80`
+
+<Steps>
+  <Step title="Scan for Islands">
+    Queries all elements with `data-ryunix-island` attribute.
+  </Step>
+  
+  <Step title="Lookup Component">
+    Looks up the component in the local `components` dictionary or the global `window.__RYUNIX_ISLANDS__` registry.
+  </Step>
+  
+  <Step title="Extract Props">
+    Extracts the encoded properties from the `data-props` attribute.
+  </Step>
+  
+  <Step title="Hydrate Island">
+    Calls `hydrate()` on that specific isolated container.
+  </Step>
+</Steps>
+
+#### Server-Side Island Markup
+
+On the server, islands are rendered as:
+
+```html
+<div data-ryunix-island="Counter" data-props='{"initialCount":0}'>
+  <!-- Server-rendered content -->
+  <div>Count: 0</div>
+</div>
+```
+
+#### Client-Side Hydration
+
+```javascript
+// Automatically finds and hydrates all islands
+hydrateIslands({
+  Counter: () => import('./Counter'),
+});
+```
+
+<Note>
+  Islands that are shielded by a `ServerBoundary` are **not** hydrated if a main element is managing hydration. This prevents double-hydration.
+</Note>
+
+### Use Cases for Islands
+
+<CardGroup cols={2}>
+  <Card title="Interactive Widgets" icon="cube">
+    Hydrate only interactive components like counters, forms, or live data widgets on otherwise static pages.
+  </Card>
+  
+  <Card title="Marketing Pages" icon="chart-line">
+    Ship minimal JavaScript on marketing pages by hydrating only the signup form, leaving the rest as static HTML.
+  </Card>
+  
+  <Card title="Documentation Sites" icon="book">
+    Hydrate interactive code examples and playgrounds while keeping the documentation content static.
+  </Card>
+  
+  <Card title="E-commerce" icon="cart-shopping">
+    Hydrate product filters and "Add to Cart" buttons while keeping product descriptions and images static.
+  </Card>
+</CardGroup>
+
+## Server-Side Rendering (SSR)
+
+### renderToString()
+
+Synchronously renders a Ryunix virtual DOM tree to a string of HTML.
+
+```jsx
+import { renderToString, createElement } from '@unsetsoft/ryunixjs';
+
+const App = () => <div>Hello, Ryunix!</div>;
+
+const html = renderToString(createElement(App));
+console.log(html); // <div>Hello, Ryunix!</div>
+```
+
+**Features:**
+- Injects necessary styles and attributes
+- Escapes specific HTML characters to prevent XSS
+- Synchronous execution for simple use cases
+
+<Warning>
+  `renderToString()` is **synchronous** and blocks the event loop. For production SSR with async data fetching, use `renderToReadableStream()`.
+</Warning>
+
+### renderToReadableStream()
+
+Asynchronously renders a Ryunix tree to a Web stream (`ReadableStream`). Excellent for out-of-order streaming and early flushes.
+
+```javascript
+import { renderToReadableStream, createElement } from '@unsetsoft/ryunixjs';
+
+const App = () => <div>Hello, Ryunix!</div>;
+
+const stream = await renderToReadableStream(createElement(App));
+
+// Send stream to client
+return new Response(stream, {
+  headers: { 'Content-Type': 'text/html' },
+});
+```
+
+**Source Reference:** See SSR implementation in `/packages/core/src/lib/ssr.js`
+
+#### Suspense Integration
+
+Handles `Suspense` natively by buffering background completion tasks and streaming fallback skeleton HTML immediately.
+
+<Steps>
+  <Step title="Immediate Fallback">
+    When a Suspense boundary is encountered with pending children, the fallback is streamed immediately.
+  </Step>
+  
+  <Step title="Background Resolution">
+    The actual content is rendered in the background as Promises resolve.
+  </Step>
+  
+  <Step title="Template Injection">
+    Once background tasks complete, a `<template>` tag with the real content is streamed.
+  </Step>
+  
+  <Step title="Client-Side Swap">
+    A small JavaScript helper (`$RC`) automatically swaps the fallback with the real content in the DOM.
+  </Step>
+</Steps>
+
+```jsx
+import { Suspense, lazy } from '@unsetsoft/ryunixjs';
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+const App = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <HeavyComponent />
+  </Suspense>
+);
+
+// Server streams:
+// 1. <div>Loading...</div> (immediately)
+// 2. <template id="suspense-1"><!-- actual content --></template>
+// 3. <script>$RC('suspense-1')</script> (swaps content)
+```
+
+<Tip>
+  Use `renderToReadableStream()` with Suspense for optimal performance on dynamic pages with async data.
+</Tip>
+
+## Rendering Lifecycle
+
+### Phase 1: Render (Async)
+
+<Steps>
+  <Step title="Schedule Work">
+    `scheduleWork()` sets up the Work-In-Progress root and schedules the work loop.
+  </Step>
+  
+  <Step title="Work Loop">
+    `workLoop()` runs in `requestIdleCallback`, processing fibers in chunks.
+  </Step>
+  
+  <Step title="Reconciliation">
+    `performUnitOfWork()` reconciles children, creating, updating, or marking fibers for deletion.
+  </Step>
+  
+  <Step title="Interruptible">
+    Work yields when less than 1ms remains in the idle frame, preventing blocking.
+  </Step>
+</Steps>
+
+### Phase 2: Commit (Sync)
+
+<Steps>
+  <Step title="Process Deletions">
+    All fibers marked for deletion are removed from the DOM.
+  </Step>
+  
+  <Step title="Swap Trees">
+    `state.currentRoot` is updated to the finished work tree.
+  </Step>
+  
+  <Step title="Commit Mutations">
+    `commitWork()` recursively applies Placements, Updates, and Hydrations.
+  </Step>
+  
+  <Step title="Run Effects">
+    Layout effects run synchronously, then normal effects run asynchronously.
+  </Step>
+</Steps>
+
+## Performance Optimizations
+
+### Concurrent Rendering
+
+Ryunix uses `requestIdleCallback` (with `setTimeout` fallback) to break rendering into chunks, preventing blocking of user interactions.
+
+```javascript
+const workLoop = (deadline) => {
+  let shouldYield = false;
+
+  while (state.nextUnitOfWork && !shouldYield) {
+    state.nextUnitOfWork = performUnitOfWork(state.nextUnitOfWork);
+    shouldYield = deadline.timeRemaining() < 1;
+  }
+
+  if (!state.nextUnitOfWork && state.wipRoot) {
+    commitRoot();
+  }
+};
+```
+
+### Priority Scheduling
+
+High-priority updates (user input) are processed immediately, while low-priority updates (analytics) are deferred.
+
+```javascript
+import { Priority } from '@unsetsoft/ryunixjs';
+
+scheduleWork(root, Priority.IMMEDIATE); // User clicks
+scheduleWork(root, Priority.LOW);       // Background tasks
+```
+
+### Key-Based Reconciliation
+
+Ryunix uses O(1) Map-based key matching for efficient list reconciliation.
+
+```jsx
+const TodoList = ({ todos }) => (
+  <ul>
+    {todos.map(todo => (
+      <li key={todo.id}>{todo.text}</li>
+    ))}
+  </ul>
+);
+```
+
+<Note>
+  Always provide stable `key` props for list items to enable efficient reconciliation and preserve component state across re-orders.
+</Note>
+
+## Debugging
+
+Enable debug logging to see rendering internals:
+
+```bash
+RYUNIX_DEBUG=true npm run dev
+```
+
+Example output:
+
+```
+[Ryunix Debug] init: SSR content detected. Starting hydration on #__ryunix
+[Ryunix Debug] Hydrating node: div
+[Ryunix Debug] commitRoot - isHydrating: true, hydrationFailed: false
+```

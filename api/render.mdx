@@ -1,0 +1,522 @@
+---
+title: 'Client Rendering'
+description: 'Client-side rendering and hydration APIs for RyunixJS'
+icon: 'browser'
+---
+
+## render
+
+Renders a RyunixElement into a DOM container using client-side rendering (CSR). This function clears the container and renders the element from scratch.
+
+### Signature
+
+```javascript
+function render(element, container): RootFiber
+```
+
+<ParamField path="element" type="RyunixElement" required>
+  The RyunixElement to render. Typically the root component of your application.
+</ParamField>
+
+<ParamField path="container" type="HTMLElement" required>
+  The DOM element that will contain the rendered output. This container will be cleared before rendering.
+</ParamField>
+
+### Returns
+
+<ResponseField name="root" type="RootFiber">
+  The root fiber object containing:
+  - `dom`: Reference to the container element
+  - `props`: Props containing the element as a child
+  - `alternate`: Reference to the previous root (if any)
+  - `isHydrating`: `false` for CSR
+  - `hydrateCursor`: `null` for CSR
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Rendering
+
+```javascript
+import { createElement, render } from '@ryunixjs/core'
+
+function App() {
+  return createElement('div', { className: 'app' }, 'Hello RyunixJS!')
+}
+
+const container = document.getElementById('root')
+render(createElement(App), container)
+```
+
+#### With JSX
+
+```jsx
+import { render } from '@ryunixjs/core'
+import App from './App'
+
+const container = document.getElementById('root')
+render(<App />, container)
+```
+
+#### Re-rendering
+
+```javascript
+import { render } from '@ryunixjs/core'
+
+let count = 0
+
+function Counter() {
+  return <div>Count: {count}</div>
+}
+
+const container = document.getElementById('root')
+
+// Initial render
+render(<Counter />, container)
+
+// Re-render with updated state
+setInterval(() => {
+  count++
+  render(<Counter />, container)
+}, 1000)
+```
+
+<Warning>
+  The `render` function clears the container before rendering. If you have server-rendered content, use `hydrate` instead to preserve the existing DOM.
+</Warning>
+
+### Behavior
+
+1. **Container Clearing**: The container is cleared using `clearContainer()` before rendering
+2. **Fiber Creation**: Creates a root fiber with the element as a child
+3. **Work Scheduling**: Schedules reconciliation work using `scheduleWork()`
+4. **Incremental Rendering**: Work is performed incrementally using the fiber architecture
+
+---
+
+## init
+
+Initializes a RyunixJS application with automatic SSR detection. This is the recommended way to start your application as it handles both CSR and hydration automatically.
+
+### Signature
+
+```javascript
+function init(MainElement, root = '__ryunix', components = {}): RootFiber
+```
+
+<ParamField path="MainElement" type="RyunixElement" required>
+  The main application element to render or hydrate.
+</ParamField>
+
+<ParamField path="root" type="string" default="__ryunix">
+  The ID of the root container element (without the `#` prefix).
+</ParamField>
+
+<ParamField path="components" type="object" default="{}">
+  Registry of island components for hydration. Keys are component IDs, values are component functions.
+  
+  ```javascript
+  {
+    'MyCounter': CounterComponent,
+    'UserProfile': ProfileComponent
+  }
+  ```
+</ParamField>
+
+### Returns
+
+<ResponseField name="root" type="RootFiber">
+  The root fiber object from either `hydrate()` or `render()`.
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Application
+
+```javascript
+import { init } from '@ryunixjs/core'
+import App from './App'
+
+init(<App />)
+// Looks for element with id="__ryunix"
+```
+
+#### Custom Root Element
+
+```javascript
+import { init } from '@ryunixjs/core'
+import App from './App'
+
+init(<App />, 'app-root')
+// Looks for element with id="app-root"
+```
+
+#### With Islands Architecture
+
+```javascript
+import { init } from '@ryunixjs/core'
+import App from './App'
+import Counter from './islands/Counter'
+import UserCard from './islands/UserCard'
+
+init(<App />, '__ryunix', {
+  'Counter': Counter,
+  'UserCard': UserCard
+})
+```
+
+#### HTML Setup
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>RyunixJS App</title>
+  </head>
+  <body>
+    <div id="__ryunix"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+```
+
+### SSR Detection Logic
+
+`init` automatically detects server-rendered content:
+
+```javascript
+if (process.env.RYUNIX_SSR && containerRoot.hasChildNodes()) {
+  // SSR content detected - use hydration
+  return hydrate(MainElement, containerRoot)
+} else {
+  // No SSR content - use client-side render
+  return render(MainElement, containerRoot)
+}
+```
+
+<Note>
+  Set the `RYUNIX_SSR` environment variable to `true` during build to enable SSR detection. Most bundlers support this via define plugins.
+</Note>
+
+### Islands Hydration
+
+When a main element is provided, `init` automatically hydrates islands that aren't inside a `ServerBoundary`. Islands are identified by the `data-ryunix-island` attribute.
+
+---
+
+## hydrate
+
+Attaches RyunixJS to an existing server-rendered DOM tree. Instead of clearing and re-rendering, it preserves the existing HTML and attaches event listeners and state.
+
+### Signature
+
+```javascript
+function hydrate(element, container): RootFiber
+```
+
+<ParamField path="element" type="RyunixElement" required>
+  The RyunixElement that was used to generate the server-rendered HTML.
+</ParamField>
+
+<ParamField path="container" type="HTMLElement" required>
+  The DOM container containing the server-rendered HTML.
+</ParamField>
+
+### Returns
+
+<ResponseField name="root" type="RootFiber">
+  The root fiber object with:
+  - `isHydrating`: `true`
+  - `hydrateCursor`: Points to the first valid DOM node
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Hydration
+
+```javascript
+import { hydrate } from '@ryunixjs/core'
+import App from './App'
+
+const container = document.getElementById('root')
+hydrate(<App />, container)
+```
+
+#### With Server-Rendered HTML
+
+```html
+<!-- Server-rendered HTML -->
+<div id="root">
+  <div class="app">
+    <h1>Hello RyunixJS!</h1>
+    <p>This was rendered on the server.</p>
+  </div>
+</div>
+
+<script type="module">
+  import { hydrate } from '@ryunixjs/core'
+  import App from './App.js'
+  
+  hydrate(<App />, document.getElementById('root'))
+</script>
+```
+
+### Hydration Process
+
+1. **Preserve DOM**: Existing DOM nodes are preserved and reused
+2. **Attach Listeners**: Event handlers are attached to existing elements
+3. **State Initialization**: Component state is initialized
+4. **Validation**: Hydration validates that the DOM matches the virtual tree
+
+<Warning>
+  If the server-rendered HTML doesn't match the client component tree, hydration may fail or produce unexpected results. This is called a "hydration mismatch."
+</Warning>
+
+### Hydration Cursor
+
+The hydration cursor skips over whitespace-only text nodes and comment nodes:
+
+```javascript
+function nextValidSibling(node) {
+  let next = node
+  while (next && (
+    (next.nodeType === 3 && !next.nodeValue.trim()) || // Empty text node
+    next.nodeType === 8 // Comment node
+  )) {
+    next = next.nextSibling
+  }
+  return next
+}
+```
+
+---
+
+## hydrateIslands
+
+Hydrates individual island components marked with `data-ryunix-island` attributes. This enables the islands architecture pattern.
+
+### Signature
+
+```javascript
+function hydrateIslands(components = {}, hasMainElement = false): void
+```
+
+<ParamField path="components" type="object" default="{}">
+  Registry mapping component IDs to component functions.
+</ParamField>
+
+<ParamField path="hasMainElement" type="boolean" default="false">
+  Whether a main element is hydrating the page. If `true`, islands inside non-ServerBoundary elements are skipped (they'll be hydrated by the main element).
+</ParamField>
+
+### Usage Examples
+
+#### Standalone Islands
+
+```javascript
+import { hydrateIslands } from '@ryunixjs/core'
+import Counter from './islands/Counter'
+import SearchBox from './islands/SearchBox'
+
+// Hydrate only the islands, no main app
+hydrateIslands({
+  'Counter': Counter,
+  'SearchBox': SearchBox
+})
+```
+
+#### Server-Rendered Islands
+
+```html
+<!-- Server-rendered island -->
+<div data-ryunix-island="Counter" data-props='{"initialCount":5}'>
+  <div class="counter">
+    <button>-</button>
+    <span>5</span>
+    <button>+</button>
+  </div>
+</div>
+
+<script type="module">
+  import { hydrateIslands } from '@ryunixjs/core'
+  import Counter from './Counter.js'
+  
+  hydrateIslands({ 'Counter': Counter })
+</script>
+```
+
+#### Global Registry
+
+```javascript
+// Components can also be registered globally
+window.__RYUNIX_ISLANDS__ = {
+  'Counter': Counter,
+  'SearchBox': SearchBox
+}
+
+// Then hydrate without explicit registry
+hydrateIslands()
+```
+
+### Island Attributes
+
+<ParamField path="data-ryunix-island" type="string" required>
+  The component ID used to look up the component in the registry.
+</ParamField>
+
+<ParamField path="data-props" type="string">
+  JSON-serialized props for the island component.
+</ParamField>
+
+<ParamField path="data-ryunix-server" type="string">
+  Marks a ServerBoundary. Islands inside are always hydrated independently.
+</ParamField>
+
+### Error Handling
+
+```javascript
+try {
+  const props = JSON.parse(container.getAttribute('data-props') || '{}')
+  hydrate(createElement(Component, props), container)
+} catch (e) {
+  console.error(`[Ryunix Islands] Error hydrating island "${id}":`, e)
+}
+```
+
+<Tip>
+  In development mode, you'll see warnings if an island component isn't found in the registry.
+</Tip>
+
+---
+
+## safeRender
+
+Renders a component with error handling. Useful for error boundaries and safe component rendering.
+
+### Signature
+
+```javascript
+function safeRender(component, props, onError): RyunixElement | null
+```
+
+<ParamField path="component" type="Function" required>
+  The component function to render.
+</ParamField>
+
+<ParamField path="props" type="object" required>
+  Props to pass to the component.
+</ParamField>
+
+<ParamField path="onError" type="Function">
+  Error handler callback. Called with the error object if rendering fails.
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="RyunixElement | null">
+  The rendered element, or `null` if an error occurred.
+</ResponseField>
+
+### Usage Examples
+
+#### Basic Error Handling
+
+```javascript
+import { safeRender } from '@ryunixjs/core'
+
+function RiskyComponent(props) {
+  if (!props.data) {
+    throw new Error('Data is required')
+  }
+  return <div>{props.data}</div>
+}
+
+const result = safeRender(
+  RiskyComponent,
+  { data: null },
+  (error) => console.error('Render failed:', error)
+)
+// result is null, error is logged
+```
+
+#### In Error Boundaries
+
+```jsx
+import { safeRender } from '@ryunixjs/core'
+import { useState } from '@ryunixjs/core'
+
+function ErrorBoundary({ children, fallback }) {
+  const [error, setError] = useState(null)
+  
+  if (error) {
+    return fallback
+  }
+  
+  const result = safeRender(
+    () => children,
+    {},
+    (err) => setError(err)
+  )
+  
+  return result || fallback
+}
+```
+
+<Note>
+  In production mode, component errors are silently caught. In development mode, errors are logged to the console.
+</Note>
+
+---
+
+## Implementation Details
+
+### Fiber Architecture
+
+RyunixJS uses a fiber-based reconciliation architecture:
+
+```javascript
+const root = {
+  dom: container,              // DOM reference
+  props: {                     // Fiber props
+    children: [element]
+  },
+  alternate: state.currentRoot, // Previous fiber
+  isHydrating: false,          // Hydration flag
+  hydrateCursor: null          // Hydration position
+}
+```
+
+### State Management
+
+Rendering state is managed globally:
+
+```javascript
+const state = {
+  containerRoot: null,    // Root DOM element
+  nextUnitOfWork: null,   // Next fiber to process
+  currentRoot: null,      // Current fiber tree
+  wipRoot: null,          // Work-in-progress root
+  deletions: [],          // Fibers to delete
+  wipFiber: null,         // Current working fiber
+  hookIndex: 0,           // Current hook index
+  effects: []             // Effects to run
+}
+```
+
+### Work Scheduling
+
+Work is scheduled using `scheduleWork()` which uses the fiber architecture to perform incremental rendering:
+
+```javascript
+scheduleWork(root)
+// Work is processed incrementally during idle time
+// Uses requestIdleCallback when available
+```
+
+<Tip>
+  The fiber architecture enables features like:
+  - Incremental rendering (work can be paused and resumed)
+  - Priority-based updates
+  - Time slicing
+  - Concurrent rendering (future feature)
+</Tip>

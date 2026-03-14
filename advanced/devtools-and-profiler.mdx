@@ -1,0 +1,318 @@
+---
+title: "DevTools and Profiler"
+description: "Debug and optimize your Ryunix applications with built-in development utilities and performance profiling"
+icon: "bug"
+---
+
+# DevTools and Profiler
+
+RyunixJS includes powerful zero-cost runtime utilities that provide deep insights during development while automatically compiling out of production builds. The framework ships with `devtools.js` for validation and warnings, and `profiler.js` for performance measurement.
+
+## Development Utilities
+
+The devtools module provides runtime validation and debugging capabilities that help catch errors early in development.
+
+### Hook Context Validation
+
+The `validateHookContext()` function enforces runtime invariants to prevent common mistakes when using hooks.
+
+```javascript
+import { validateHookContext } from '@unsetsoft/ryunixjs/devtools'
+
+function useCustomHook() {
+  validateHookContext('useCustomHook')
+  // Hook implementation
+}
+```
+
+This validation ensures:
+- Hooks are only called inside function components
+- Hooks are called at the top level of your component
+- The current fiber has a valid hooks array
+
+<Warning>
+If you attempt to call a hook outside of the render cycle or in a standard JavaScript closure, `validateHookContext()` will throw an immediate error with a stack trace before RyunixJS enters an undefined state.
+</Warning>
+
+### Warning and Error Logging
+
+RyunixJS provides smart runtime loggers that only trigger in development:
+
+```javascript
+import { warning, error } from '@unsetsoft/ryunixjs/devtools'
+
+// Conditional warning
+warning(props.items.length > 0, 'Items array should not be empty')
+
+// Development-only error logging
+error('Invalid configuration detected')
+```
+
+These utilities check `process.env.NODE_ENV !== 'production'` internally, keeping your production builds clean.
+
+### Deprecation Warnings
+
+When migrating APIs, use the `deprecated()` helper to guide developers:
+
+```javascript
+import { deprecated } from '@unsetsoft/ryunixjs/devtools'
+
+function oldAPI() {
+  deprecated('oldAPI', 'newAPI', '2.0.0')
+  // Implementation
+}
+```
+
+This outputs: `[Ryunix Deprecated] oldAPI is deprecated and will be removed in version 2.0.0. Use newAPI instead.`
+
+### Component Name Detection
+
+The `getComponentName()` utility extracts meaningful names from components:
+
+```javascript
+import { getComponentName } from '@unsetsoft/ryunixjs/devtools'
+
+const name = getComponentName(component)
+// Returns: displayName || name || 'Anonymous'
+```
+
+### Performance Tracking
+
+The `perfTracker` utility provides lightweight performance markers:
+
+```javascript
+import { perfTracker } from '@unsetsoft/ryunixjs/devtools'
+
+function expensiveOperation() {
+  perfTracker.mark('operation-start')
+  
+  // Your code here
+  
+  perfTracker.measure('Operation Complete', 'operation-start')
+  perfTracker.clear()
+}
+```
+
+<Tip>
+All DevTools utilities are completely stripped from production builds, ensuring zero runtime overhead.
+</Tip>
+
+## Performance Profiler
+
+The `Profiler` class uses the high-resolution `performance.now()` Web API to track component render performance.
+
+### Core Concepts
+
+<Steps>
+  <Step title="Automatic Recording">
+    The profiler buffers the last 100 render records (configurable via `maxSamples`)
+  </Step>
+  <Step title="Component Metrics">
+    Tracks duration, timestamp, and component name for each render
+  </Step>
+  <Step title="Statistical Analysis">
+    Calculates average, min, max, and total render timings
+  </Step>
+  <Step title="Bottleneck Detection">
+    Identifies the slowest performing components automatically
+  </Step>
+</Steps>
+
+### Using the Profiler Hook
+
+The `useProfiler()` hook measures component render time:
+
+```javascript
+import { useProfiler } from '@unsetsoft/ryunixjs/profiler'
+
+function MyComponent() {
+  const endProfile = useProfiler('MyComponent')
+  
+  // Component logic here
+  
+  // The profiler automatically records when the component returns
+  return <div>Content</div>
+}
+```
+
+The hook:
+1. Starts a timer when the component initializes
+2. Returns a cleanup function
+3. Automatically records the duration when the component function completes
+
+### Using the Higher-Order Component
+
+The `withProfiler()` HOC wraps components for automatic profiling:
+
+```javascript
+import { withProfiler } from '@unsetsoft/ryunixjs/profiler'
+
+function ExpensiveComponent(props) {
+  return (
+    <div>
+      {props.items.map(item => (
+        <Item key={item.id} data={item} />
+      ))}
+    </div>
+  )
+}
+
+export default withProfiler(ExpensiveComponent, 'ExpensiveComponent')
+```
+
+The HOC:
+- Intercepts props before rendering
+- Measures the full execution time
+- Pipes metrics to `profiler.recordRender()`
+- Returns the rendered result unchanged
+
+### Analyzing Performance
+
+Access profiler statistics programmatically:
+
+```javascript
+import { profiler } from '@unsetsoft/ryunixjs/profiler'
+
+// Get overall statistics
+const stats = profiler.getStats()
+console.log(`Average render: ${stats.avg.toFixed(2)}ms`)
+console.log(`Total renders: ${stats.count}`)
+console.log(`Min: ${stats.min.toFixed(2)}ms, Max: ${stats.max.toFixed(2)}ms`)
+
+// Get slowest components
+const slowest = profiler.getSlowestComponents(5)
+slowwest.forEach((comp, i) => {
+  console.log(`${i + 1}. ${comp.name}: ${comp.avg.toFixed(2)}ms avg`)
+})
+```
+
+### Profiler Console Output
+
+Use `profiler.logStats()` to output formatted performance data:
+
+```javascript
+import { profiler } from '@unsetsoft/ryunixjs/profiler'
+
+// In development console or DevTools bridge
+profiler.logStats()
+```
+
+This outputs:
+```
+🔍 Ryunix Performance Stats
+Total renders: 247
+Avg render time: 2.34ms
+Min: 0.12ms | Max: 45.67ms
+
+⚠️  Slowest components:
+1. DataTable: 12.45ms avg (23 renders)
+2. ChartWidget: 8.92ms avg (15 renders)
+3. ImageGallery: 6.23ms avg (31 renders)
+4. FilterPanel: 4.18ms avg (42 renders)
+5. SearchBar: 3.56ms avg (38 renders)
+```
+
+<Note>
+The profiler enables developers to quickly isolate bottlenecks caused by deep component trees or un-memoized calculations.
+</Note>
+
+### Profiler API Reference
+
+<CardGroup cols={2}>
+  <Card title="profiler.startMeasure(name)" icon="play">
+    Start a named performance measurement
+  </Card>
+  <Card title="profiler.endMeasure(name)" icon="stop">
+    End a measurement and return the duration
+  </Card>
+  <Card title="profiler.recordRender(name, duration)" icon="database">
+    Manually record a component render with duration
+  </Card>
+  <Card title="profiler.getStats()" icon="chart-line">
+    Get overall performance statistics
+  </Card>
+  <Card title="profiler.getSlowestComponents(limit)" icon="gauge-high">
+    Get the slowest components (default: top 10)
+  </Card>
+  <Card title="profiler.logStats()" icon="terminal">
+    Output formatted statistics to console
+  </Card>
+  <Card title="profiler.clear()" icon="trash">
+    Clear all recorded measurements and render times
+  </Card>
+  <Card title="profiler.enable() / disable()" icon="toggle-on">
+    Manually toggle profiler on or off
+  </Card>
+</CardGroup>
+
+### Best Practices
+
+<AccordionGroup>
+  <Accordion title="Profile in realistic conditions" icon="flask">
+    Profile your application with realistic data volumes and user interactions. Don't just test with empty states or minimal data.
+  </Accordion>
+  
+  <Accordion title="Focus on the top offenders" icon="crosshairs">
+    Use `getSlowestComponents()` to identify the biggest bottlenecks first. Optimizing the slowest 5 components often yields better results than optimizing dozens of fast components.
+  </Accordion>
+  
+  <Accordion title="Measure before and after" icon="code-compare">
+    Always capture baseline metrics with `profiler.getStats()` before optimization, then compare after changes to validate improvements.
+  </Accordion>
+  
+  <Accordion title="Clear between test runs" icon="broom">
+    Use `profiler.clear()` to reset measurements between different test scenarios for accurate comparisons.
+  </Accordion>
+</AccordionGroup>
+
+## Integration with Browser DevTools
+
+RyunixJS provides a dedicated browser extension that bridges with the profiler and devtools modules:
+
+<Steps>
+  <Step title="Install the Extension">
+    Install `@unsetsoft/ryunix-devtools` from the Chrome Web Store or Firefox Add-ons
+  </Step>
+  <Step title="Open DevTools Panel">
+    Open browser DevTools and navigate to the "Ryunix" tab
+  </Step>
+  <Step title="Inspect Component Tree">
+    View the live component fiber tree with props and state
+  </Step>
+  <Step title="Monitor Performance">
+    Access real-time profiler statistics and render timings
+  </Step>
+</Steps>
+
+<Tip>
+The DevTools extension automatically detects Ryunix applications and enables advanced debugging features like time-travel debugging and state inspection.
+</Tip>
+
+## SSR Compatibility
+
+The profiler gracefully handles Server-Side Rendering environments:
+
+```javascript
+// Safe performance.now() wrapper for SSR/Node environments
+const perfNow = () =>
+  typeof performance !== 'undefined' ? performance.now() : Date.now()
+```
+
+This ensures the profiler works seamlessly in both browser and Node.js environments without throwing errors.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Boundaries" icon="shield" href="/advanced/error-boundaries">
+    Learn how to gracefully handle errors in your component tree
+  </Card>
+  <Card title="Lazy Loading" icon="spinner" href="/advanced/lazy-loading">
+    Optimize bundle size with code splitting and lazy components
+  </Card>
+  <Card title="Performance Hooks" icon="gauge" href="/api/hooks/useTransition">
+    Explore performance-focused hooks like useTransition and useDebounce
+  </Card>
+  <Card title="Memoization" icon="memory" href="/api/utilities/memo">
+    Prevent unnecessary re-renders with memo and useMemo
+  </Card>
+</CardGroup>
